@@ -381,9 +381,16 @@ function renderRoad() {
                     <div class="road-progress-fill" style="background: ${target.color}; left: ${startX}%; width: ${todayX - startX}%"></div>
                     
                     <!-- Major Points -->
-                    <div class="road-point start" style="left: ${startX}%"><span class="point-label">開始</span></div>
+                    <div class="road-point start" style="left: ${startX}%">
+                        <span class="point-label">開始</span>
+                        <span class="point-date">${start.getMonth() + 1}/${start.getDate()}</span>
+                        <span class="point-rem">あと${totalDays}日</span>
+                    </div>
                     <div class="road-point today" style="left: ${todayX}%"><div class="orb"></div></div>
-                    <div class="road-point end" style="left: ${endX}%" style="border-color: ${target.color}"><span class="point-label">ゴール</span></div>
+                    <div class="road-point end" style="left: ${endX}%" style="border-color: ${target.color}">
+                        <span class="point-label">ゴール</span>
+                        <span class="point-date">${end.getMonth() + 1}/${end.getDate()}</span>
+                    </div>
 
                     <!-- Milestones -->
                     ${milestones.map(m => `
