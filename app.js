@@ -222,7 +222,11 @@ function renderSettings() {
         <section class="settings-section">
             <div class="task-section-header">
                 <h2>例外日（個別の予定）</h2>
-                <button class="btn btn-primary btn-sm" id="add-exception-btn">+ 追加</button>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-ghost btn-sm" id="import-file-btn">📥 インポート</button>
+                    <button class="btn btn-primary btn-sm" id="add-exception-btn">+ 追加</button>
+                </div>
+                <input type="file" id="settings-file-input" style="display: none;" accept=".ics,.csv">
             </div>
             <div class="exception-list" id="exception-list-container">
                 ${Object.keys(state.customDates).length === 0 ? '<p class="empty-state" style="padding: 10px;">例外日が設定されていません</p>' : ''}
@@ -249,26 +253,68 @@ function renderSettings() {
         };
     });
 
-    container.querySelector('#add-exception-btn').onclick = () => {
-        const date = prompt('日付を選択してください (YYYY-MM-DD)', new Date().toISOString().split('T')[0]);
-        if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-            const hours = prompt('その日の可処分時間は何時間ですか？', '0');
-            if (hours !== null) {
-                state.customDates[date] = parseFloat(hours) || 0;
-                storage.save();
-                renderSettings();
-            }
-        }
+    container.querySelector('#import-file-btn').onclick = () => {
+        container.querySelector('#settings-file-input').click();
     };
 
-    container.querySelectorAll('.delete-exception').forEach(btn => {
-        btn.onclick = (e) => {
-            const date = e.target.dataset.date;
-            delete state.customDates[date];
+    container.querySelector('#settings-file-input').onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const content = event.target.result;
+            if (file.name.endsWith('.ics')) {
+                parseICS(content);
+            } else if (file.name.endsWith('.csv')) {
+                parseCSV(content);
+            }
             storage.save();
             renderSettings();
+            alert('インポートが完了しました');
         };
-    });
+        reader.readAsText(file);
+    };
+
+    function parseICS(content) {
+        // Simple regex-based ICS parser for DTSTART;VALUE=DATE:YYYYMMDD or DTSTART:YYYYMMDDTHHMMSS
+        const lines = content.split(/\r?\n/);
+        let count = 0;
+        lines.forEach(line => {
+            if (line.startsWith('DTSTART')) {
+                const match = line.match(/:(\d{8})/);
+                if (match) {
+                    const y = match[1].substring(0, 4);
+                    const m = match[1].substring(4, 6);
+                    const d = match[1].substring(6, 8);
+                    const dateStr = `${y}-${m}-${d}`;
+                    state.customDates[dateStr] = 0; // Default to 0 hours for holidays
+                    count++;
+                }
+            }
+        });
+        console.log(`Imported ${count} dates from ICS`);
+    }
+
+    function parseCSV(content) {
+        const lines = content.split(/\r?\n/);
+        let count = 0;
+        lines.forEach(line => {
+            const parts = line.split(',');
+            if (parts.length >= 1) {
+                const dateStr = parts[0].trim();
+                // Validate YYYY-MM-DD
+                if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                    const hours = parseFloat(parts[1]) || 0;
+                    state.customDates[dateStr] = hours;
+                    count++;
+                }
+            }
+        });
+        console.log(`Imported ${count} entries from CSV`);
+    }
+
+    container.querySelector('#delete-target-btn')?.onclick?.(); // Error prevention
 }
 
 function renderDetail(target) {
