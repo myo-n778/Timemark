@@ -6,12 +6,13 @@ const state = {
     currentView: 'list',
     selectedTargetId: null,
     targets: [],
-    exclusionDates: [], // Legacy, keeping for migration
+    exclusionDates: [], // Legacy
     weeklyHours: {
         mon: 4, tue: 4, wed: 4, thu: 4, fri: 4,
         sat: 10, sun: 11, holiday: 10
     },
-    customDates: {} // { "YYYY-MM-DD": hours }
+    customDates: {}, // { "YYYY-MM-DD": hours }
+    timePeriods: [] // [ { id, name, start, end, weeklyHours: {...} } ]
 };
 // target structure example:
 // { id, name, targetDate, color, type: 'study'|'event', tasks: [], createdAt }
@@ -22,7 +23,8 @@ const storage = {
         localStorage.setItem('timemark_data', JSON.stringify({
             targets: state.targets,
             weeklyHours: state.weeklyHours,
-            customDates: state.customDates
+            customDates: state.customDates,
+            timePeriods: state.timePeriods
         }));
     },
     load: () => {
@@ -32,6 +34,7 @@ const storage = {
             state.targets = parsed.targets || [];
             state.weeklyHours = parsed.weeklyHours || state.weeklyHours;
             state.customDates = parsed.customDates || {};
+            state.timePeriods = parsed.timePeriods || [];
 
             // Migration: if customDates is empty but exclusionDates exists
             if (Object.keys(state.customDates).length === 0 && parsed.exclusionDates) {
@@ -69,16 +72,22 @@ const timeUtils = {
     getHoursForDate: (date) => {
         const dateStr = date.toISOString().split('T')[0];
 
-        // 1. Check custom exceptions
+        // 1. 最優先: 個別例外日 (祝日インポート含む)
         if (state.customDates[dateStr] !== undefined) {
             return state.customDates[dateStr];
         }
 
-        // TODO: Future - Check public holidays
-        // For now, treat sun/sat as non-weekday or check if it's holiday
+        // 2. 次点: 期間指定の設定 (長期休暇など)
+        const period = state.timePeriods.find(p => dateStr >= p.start && dateStr <= p.end);
+
         const dayMap = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
         const dayName = dayMap[date.getDay()];
 
+        if (period) {
+            return period.weeklyHours[dayName];
+        }
+
+        // 3. デフォルト: 通常の曜日設定
         return state.weeklyHours[dayName];
     },
 
@@ -207,16 +216,22 @@ function renderSettings() {
         <h1 class="glow-text">Settings</h1>
         
         <section class="settings-section">
-            <h2>基本の可処分時間</h2>
-            <div class="settings-group">
-                ${Object.keys(dayLabels).map(day => `
-                    <div class="settings-row">
-                        <label>${dayLabels[day]}</label>
-                        <input type="number" class="hour-input" data-day="${day}" value="${state.weeklyHours[day]}" min="0" max="24" step="0.5">
+            <div class="task-section-header">
+                <h2>期間指定（長期休暇など）</h2>
+                <button class="btn btn-primary btn-sm" id="add-period-btn">+ 期間を追加</button>
+            </div>
+            <div class="exception-list" id="period-list-container">
+                ${state.timePeriods.length === 0 ? '<p class="empty-state" style="padding: 10px;">期間設定がありません</p>' : ''}
+                ${state.timePeriods.map(p => `
+                    <div class="exception-item">
+                        <div class="exception-info" style="display: flex; flex-direction: column;">
+                            <span style="font-weight: bold; font-size: 14px;">${p.name}</span>
+                            <span style="font-size: 11px; color: var(--text-sub)">${p.start} 〜 ${p.end}</span>
+                        </div>
+                        <button class="btn btn-ghost btn-mini delete-period" data-id="${p.id}" style="color: var(--accent-red)">削除</button>
                     </div>
                 `).join('')}
             </div>
-            <p style="font-size: 11px; color: var(--text-sub); margin-top: -8px;">※ 単位: 時間（0.5刻み）</p>
         </section>
 
         <section class="settings-section">
@@ -276,8 +291,82 @@ function renderSettings() {
         reader.readAsText(file);
     };
 
+    container.querySelector('#add-period-btn').onclick = () => {
+        showAddPeriodModal();
+    };
+
+    container.querySelectorAll('.delete-period').forEach(btn => {
+        btn.onclick = (e) => {
+            const id = e.target.dataset.id;
+            state.timePeriods = state.timePeriods.filter(p => p.id !== id);
+            storage.save();
+            renderSettings();
+        };
+    });
+
+    function showAddPeriodModal() {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        const dayMap = { mon: '月', tue: '火', wed: '水', thu: '木', fri: '金', sat: '土', sun: '日' };
+
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 450px;">
+                <h2 class="modal-title">期間の追加設定</h2>
+                <div class="form-group">
+                    <label>名前</label>
+                    <input type="text" id="per-name" placeholder="例: 夏休み">
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>開始日</label>
+                        <input type="date" id="per-start" value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>終了日</label>
+                        <input type="date" id="per-end" value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                </div>
+                <h3>期間中の曜日別時間</h3>
+                <div class="settings-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    ${Object.keys(dayMap).map(day => `
+                        <div class="settings-row" style="padding: 4px 0;">
+                            <label>${dayMap[day]}</label>
+                            <input type="number" class="per-hour-input" data-day="${day}" value="8" min="0" max="24" step="0.5" style="width: 50px;">
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="modal-actions" style="margin-top: 20px;">
+                    <button class="btn btn-ghost" id="per-cancel">キャンセル</button>
+                    <button class="btn btn-primary" id="per-save">保存</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        modal.querySelector('#per-cancel').onclick = () => modal.remove();
+        modal.querySelector('#per-save').onclick = () => {
+            const name = modal.querySelector('#per-name').value;
+            const start = modal.querySelector('#per-start').value;
+            const end = modal.querySelector('#per-end').value;
+            const weeklyHours = {};
+            modal.querySelectorAll('.per-hour-input').forEach(input => {
+                weeklyHours[input.dataset.day] = parseFloat(input.value) || 0;
+            });
+            // 祝日は日曜と同じか固定で一旦定義
+            weeklyHours.holiday = weeklyHours.sun;
+
+            if (name && start && end) {
+                state.timePeriods.push({
+                    id: crypto.randomUUID(),
+                    name, start, end, weeklyHours
+                });
+                storage.save();
+                modal.remove();
+                renderSettings();
+            }
+        };
+    }
     function parseICS(content) {
-        // Simple regex-based ICS parser for DTSTART;VALUE=DATE:YYYYMMDD or DTSTART:YYYYMMDDTHHMMSS
         const lines = content.split(/\r?\n/);
         let count = 0;
         lines.forEach(line => {
@@ -288,7 +377,7 @@ function renderSettings() {
                     const m = match[1].substring(4, 6);
                     const d = match[1].substring(6, 8);
                     const dateStr = `${y}-${m}-${d}`;
-                    state.customDates[dateStr] = 0; // Default to 0 hours for holidays
+                    state.customDates[dateStr] = 0;
                     count++;
                 }
             }
@@ -296,93 +385,13 @@ function renderSettings() {
         console.log(`Imported ${count} dates from ICS`);
     }
 
-    container.querySelector('#add-exception-btn').onclick = () => {
-        showAddExceptionModal();
-    };
-
-    function showAddExceptionModal() {
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-content">
-                <h2 class="modal-title">例外日の設定</h2>
-                <div class="form-group">
-                    <label>日付</label>
-                    <input type="date" id="exc-date" value="${new Date().toISOString().split('T')[0]}">
-                </div>
-                <div class="form-group">
-                    <label>設定内容</label>
-                    <div class="type-selector">
-                        <label class="type-option">
-                            <input type="radio" name="exc-type" value="0" checked>
-                            <span>お休み<br><small>（0時間）</small></span>
-                        </label>
-                        <label class="type-option">
-                            <input type="radio" name="exc-type" value="custom">
-                            <span>カスタム<br><small>（任意時間）</small></span>
-                        </label>
-                    </div>
-                </div>
-                <div class="form-group" id="exc-custom-group" style="display: none;">
-                    <label>稼働時間 (h)</label>
-                    <input type="number" id="exc-hours" value="0" min="0" max="24" step="0.5">
-                </div>
-                <div class="modal-actions">
-                    <button class="btn btn-ghost" id="exc-cancel">キャンセル</button>
-                    <button class="btn btn-primary" id="exc-save">保存</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-
-        const typeInputs = modal.querySelectorAll('input[name="exc-type"]');
-        const customGroup = modal.querySelector('#exc-custom-group');
-
-        typeInputs.forEach(input => {
-            input.onchange = () => {
-                customGroup.style.display = input.value === 'custom' ? 'block' : 'none';
-            };
-        });
-
-        modal.querySelector('#exc-cancel').onclick = () => modal.remove();
-        modal.querySelector('#exc-save').onclick = () => {
-            const date = modal.querySelector('#exc-date').value;
-            const type = modal.querySelector('input[name="exc-type"]:checked').value;
-            const hours = type === '0' ? 0 : parseFloat(modal.querySelector('#exc-hours').value) || 0;
-
-            if (date) {
-                state.customDates[date] = hours;
-                storage.save();
-
-                // Keep modal open for continuous input, but update background list
-                renderSettings();
-
-                // Show a brief success indicator (button text change)
-                const saveBtn = modal.querySelector('#exc-save');
-                const originalText = saveBtn.innerText;
-                saveBtn.innerText = '追加しました！';
-                saveBtn.disabled = true;
-                setTimeout(() => {
-                    saveBtn.innerText = originalText;
-                    saveBtn.disabled = false;
-                    // Reset date to next day to help quick input? Or just keep same?
-                    // User might want to enter multiple dates close together.
-                }, 800);
-            }
-        };
-    }
-
     function parseCSV(content) {
         const lines = content.split(/\r?\n/);
         let count = 0;
         lines.forEach((line, index) => {
             if (!line.trim()) return;
-
-            // Clean quotes and split
             const parts = line.split(',').map(s => s.replace(/^["']|["']$/g, '').trim());
             let dateStr = parts[0];
-
-            // Handle YYYY/M/D format (like syukujitsu.csv)
             if (dateStr.includes('/')) {
                 const dateParts = dateStr.split('/');
                 if (dateParts.length === 3) {
@@ -392,11 +401,7 @@ function renderSettings() {
                     dateStr = `${y}-${m}-${d}`;
                 }
             }
-
-            // Skip header or malformed entries
             if (index === 0 && (dateStr.toLowerCase().includes('date') || dateStr.includes('日'))) return;
-
-            // Validate YYYY-MM-DD
             if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
                 const hours = parts[1] && !isNaN(parts[1]) ? parseFloat(parts[1]) : 0;
                 state.customDates[dateStr] = hours;
@@ -406,7 +411,37 @@ function renderSettings() {
         console.log(`Imported ${count} entries from CSV`);
     }
 
-    container.querySelector('#delete-target-btn')?.onclick?.(); // Error prevention
+    container.querySelector('#import-file-btn').onclick = () => {
+        container.querySelector('#settings-file-input').click();
+    };
+
+    container.querySelector('#settings-file-input').onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const content = event.target.result;
+            if (file.name.endsWith('.ics')) parseICS(content);
+            else if (file.name.endsWith('.csv')) parseCSV(content);
+            storage.save();
+            renderSettings();
+            alert('インポートが完了しました');
+        };
+        reader.readAsText(file);
+    };
+
+    container.querySelector('#add-exception-btn').onclick = () => {
+        showAddExceptionModal();
+    };
+
+    container.querySelectorAll('.delete-exception').forEach(btn => {
+        btn.onclick = (e) => {
+            const date = e.target.dataset.date;
+            delete state.customDates[date];
+            storage.save();
+            renderSettings();
+        };
+    });
 }
 
 function renderDetail(target) {
