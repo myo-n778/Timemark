@@ -6,11 +6,12 @@ const state = {
     currentView: 'list',
     selectedTargetId: null,
     targets: [],
-    exclusionDates: [], // Array of YYYY-MM-DD strings
+    exclusionDates: [], // Legacy, keeping for migration
     weeklyHours: {
         mon: 4, tue: 4, wed: 4, thu: 4, fri: 4,
-        sat: 10, sun: 11
-    }
+        sat: 10, sun: 11, holiday: 10
+    },
+    customDates: {} // { "YYYY-MM-DD": hours }
 };
 // target structure example:
 // { id, name, targetDate, color, type: 'study'|'event', tasks: [], createdAt }
@@ -20,8 +21,8 @@ const storage = {
     save: () => {
         localStorage.setItem('timemark_data', JSON.stringify({
             targets: state.targets,
-            exclusionDates: state.exclusionDates,
-            weeklyHours: state.weeklyHours
+            weeklyHours: state.weeklyHours,
+            customDates: state.customDates
         }));
     },
     load: () => {
@@ -29,8 +30,13 @@ const storage = {
         if (data) {
             const parsed = JSON.parse(data);
             state.targets = parsed.targets || [];
-            state.exclusionDates = parsed.exclusionDates || [];
             state.weeklyHours = parsed.weeklyHours || state.weeklyHours;
+            state.customDates = parsed.customDates || {};
+
+            // Migration: if customDates is empty but exclusionDates exists
+            if (Object.keys(state.customDates).length === 0 && parsed.exclusionDates) {
+                parsed.exclusionDates.forEach(d => state.customDates[d] = 0);
+            }
         }
     }
 };
@@ -58,11 +64,26 @@ const timeUtils = {
     },
 
     /**
-     * Check if a date is excluded
+     * Get available hours for a specific date
      */
-    isExcluded: (date) => {
+    getHoursForDate: (date) => {
         const dateStr = date.toISOString().split('T')[0];
-        return state.exclusionDates.includes(dateStr);
+
+        // 1. Check custom exceptions
+        if (state.customDates[dateStr] !== undefined) {
+            return state.customDates[dateStr];
+        }
+
+        // TODO: Future - Check public holidays
+        // For now, treat sun/sat as non-weekday or check if it's holiday
+        const dayMap = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+        const dayName = dayMap[date.getDay()];
+
+        return state.weeklyHours[dayName];
+    },
+
+    isExcluded: (date) => {
+        return timeUtils.getHoursForDate(date) === 0;
     },
 
     /**
@@ -95,10 +116,7 @@ const timeUtils = {
         const dayMap = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
         while (current < end) {
-            if (!timeUtils.isExcluded(current)) {
-                const dayName = dayMap[current.getDay()];
-                total += state.weeklyHours[dayName];
-            }
+            total += timeUtils.getHoursForDate(current);
             current.setDate(current.getDate() + 1);
         }
         return total;
@@ -166,8 +184,92 @@ const views = {
             renderRoad();
         },
         destroy: () => { }
+    },
+    settings: {
+        init: () => {
+            console.log('Initializing Settings View');
+            renderSettings();
+        },
+        destroy: () => { }
     }
 };
+
+function renderSettings() {
+    const container = document.getElementById('settings-view');
+    if (!container) return;
+
+    const dayLabels = {
+        mon: '月曜日', tue: '火曜日', wed: '水曜日', thu: '木曜日', fri: '金曜日',
+        sat: '土曜日', sun: '日曜日', holiday: '祝日'
+    };
+
+    container.innerHTML = `
+        <h1 class="glow-text">Settings</h1>
+        
+        <section class="settings-section">
+            <h2>基本の可処分時間</h2>
+            <div class="settings-group">
+                ${Object.keys(dayLabels).map(day => `
+                    <div class="settings-row">
+                        <label>${dayLabels[day]}</label>
+                        <input type="number" class="hour-input" data-day="${day}" value="${state.weeklyHours[day]}" min="0" max="24" step="0.5">
+                    </div>
+                `).join('')}
+            </div>
+            <p style="font-size: 11px; color: var(--text-sub); margin-top: -8px;">※ 単位: 時間（0.5刻み）</p>
+        </section>
+
+        <section class="settings-section">
+            <div class="task-section-header">
+                <h2>例外日（個別の予定）</h2>
+                <button class="btn btn-primary btn-sm" id="add-exception-btn">+ 追加</button>
+            </div>
+            <div class="exception-list" id="exception-list-container">
+                ${Object.keys(state.customDates).length === 0 ? '<p class="empty-state" style="padding: 10px;">例外日が設定されていません</p>' : ''}
+                ${Object.keys(state.customDates).sort().reverse().map(date => `
+                    <div class="exception-item">
+                        <div class="exception-info">
+                            <span class="exception-date">${date}</span>
+                            <span class="exception-hours">${state.customDates[date]}時間</span>
+                        </div>
+                        <button class="btn btn-ghost btn-mini delete-exception" data-date="${date}" style="color: var(--accent-red)">削除</button>
+                    </div>
+                `).join('')}
+            </div>
+        </section>
+    `;
+
+    // Event Listeners
+    container.querySelectorAll('.hour-input').forEach(input => {
+        input.onchange = (e) => {
+            const day = e.target.dataset.day;
+            const val = parseFloat(e.target.value) || 0;
+            state.weeklyHours[day] = val;
+            storage.save();
+        };
+    });
+
+    container.querySelector('#add-exception-btn').onclick = () => {
+        const date = prompt('日付を選択してください (YYYY-MM-DD)', new Date().toISOString().split('T')[0]);
+        if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            const hours = prompt('その日の可処分時間は何時間ですか？', '0');
+            if (hours !== null) {
+                state.customDates[date] = parseFloat(hours) || 0;
+                storage.save();
+                renderSettings();
+            }
+        }
+    };
+
+    container.querySelectorAll('.delete-exception').forEach(btn => {
+        btn.onclick = (e) => {
+            const date = e.target.dataset.date;
+            delete state.customDates[date];
+            storage.save();
+            renderSettings();
+        };
+    });
+}
 
 function renderDetail(target) {
     const detailContainer = document.getElementById('detail-view');

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div class="star-background" id="star-field"></div>
 
@@ -24,22 +26,36 @@
             <!-- Detail view content -->
         </section>
 
-        <section id="road-view" class="view hidden">
-            <!-- Road view content (Canvas) -->
-        </section>
+        <section id="list-view" class="view"></section>
+        <section id="detail-view" class="view hidden"></section>
+        <section id="road-view" class="view hidden"></section>
+        <section id="settings-view" class="view hidden"></section>
     </main>
 
     <nav class="app-nav">
         <a href="#" class="nav-item active" data-view="list">
-            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+            <svg class="nav-icon" viewBox="0 0 24 24">
+                <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z" />
+            </svg>
             <span>List</span>
         </a>
         <a href="#" class="nav-item" data-view="road">
-            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"/></svg>
+            <svg class="nav-icon" viewBox="0 0 24 24">
+                <path
+                    d="M21 17.92V3H3v18h11.92L21 17.92M19.1 17H16v3.1L19.1 17M15 19V15h4v2l-4 4v-2M5 5h14v10h-5v5H5V5m2 4h10v2H7V9m0 4h10v2H7v-2m0 4h6v2H7v-2z" />
+            </svg>
             <span>Road</span>
+        </a>
+        <a href="#" class="nav-item" data-view="settings">
+            <svg class="nav-icon" viewBox="0 0 24 24">
+                <path
+                    d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.35 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.97 21.68,8.76L19.68,5.3C19.58,5.09 19.33,5.03 19.12,5.11L16.64,6.11C16.12,5.71 15.56,5.39 14.94,5.13L14.57,2.47C14.53,2.25 14.34,2.09 14.11,2.09H10.11C9.88,2.09 9.69,2.25 9.65,2.47L9.28,5.13C8.66,5.39 8.1,5.71 7.58,6.11L5.1,5.11C4.89,5.03 4.64,5.09 4.54,5.3L2.54,8.76C2.44,8.97 2.49,9.22 2.68,9.37L4.79,11.03C4.75,11.35 4.72,11.67 4.72,12C4.72,12.33 4.75,12.65 4.79,12.97L2.68,14.63C2.49,14.78 2.44,15.03 2.54,15.24L4.54,18.7C4.64,18.91 4.89,18.97 5.1,18.89L7.58,17.89C8.1,18.29 8.66,18.61 9.28,18.87L9.65,21.53C9.69,21.75 9.88,21.91 10.11,21.91H14.11C14.34,21.91 14.53,21.75 14.57,21.53L14.94,18.87C15.56,18.61 16.12,18.29 16.64,17.89L19.12,18.89C19.33,18.97 19.58,18.91 19.68,18.7L21.68,15.24C21.78,15.03 21.73,14.78 21.54,14.63L19.43,12.97Z" />
+            </svg>
+            <span>設定</span>
         </a>
     </nav>
 
     <script src="app.js" type="module"></script>
 </body>
+
 </html>

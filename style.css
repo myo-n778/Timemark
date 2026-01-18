@@ -304,12 +304,12 @@ main {
     background: var(--bg-color);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
-    color: var(--text-main);
+    color: #ffffff;
+    /* Improved visibility */
     font-size: 16px;
     outline: none;
     cursor: pointer;
     min-height: 44px;
-    /* Sufficient tap target height */
 }
 
 /* Force calendar icon visibility in modern browsers */
@@ -383,13 +383,17 @@ main {
 }
 
 .base-date-selector input {
-    color: var(--text-main);
+    color: #ffffff;
+    /* Improved visibility */
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
-    padding: 4px 8px;
+    padding: 6px 12px;
     outline: none;
     cursor: pointer;
     position: relative;
-    min-height: 32px;
+    min-height: 36px;
+    font-weight: bold;
 }
 
 .base-date-selector input[type="date"]::-webkit-calendar-picker-indicator {
