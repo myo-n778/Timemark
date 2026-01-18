@@ -508,17 +508,31 @@ main {
     white-space: nowrap;
 }
 
+.tick-rem {
+    position: absolute;
+    left: 4px;
+    font-size: 9px;
+    color: var(--text-sub);
+    white-space: nowrap;
+}
+
 /* Alternate tick labels up/down */
 .road-tick.ratio .tick-label {
-    top: -20px;
+    top: -30px;
     color: var(--accent-green);
     font-weight: bold;
 }
 
 .road-tick.ratio .tick-date {
-    top: -8px;
+    top: -18px;
     color: var(--accent-green);
     opacity: 0.9;
+}
+
+.road-tick.ratio .tick-rem {
+    top: -8px;
+    color: var(--accent-green);
+    font-size: 8px;
 }
 
 .road-tick.count .tick-label {

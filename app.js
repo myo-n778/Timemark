@@ -327,10 +327,12 @@ function renderRoad() {
             [0.1, 0.25, 0.5, 0.75, 0.9].forEach(ratio => {
                 const mDate = new Date(start);
                 mDate.setDate(start.getDate() + Math.round(totalDays * ratio));
+                const remaining = timeUtils.calcCalendarDays(mDate, end);
                 milestones.push({
                     x: getX(mDate),
                     label: `${Math.round(ratio * 100)}%`,
                     dateLabel: `${mDate.getMonth() + 1}/${mDate.getDate()}`,
+                    remaining: remaining,
                     type: 'ratio'
                 });
             });
@@ -341,6 +343,7 @@ function renderRoad() {
                 x: getX(d10),
                 label: '残り10日',
                 dateLabel: `${d10.getMonth() + 1}/${d10.getDate()}`,
+                remaining: 10,
                 type: 'count'
             });
 
@@ -349,6 +352,7 @@ function renderRoad() {
                 x: getX(w1),
                 label: '残り1週',
                 dateLabel: `${w1.getMonth() + 1}/${w1.getDate()}`,
+                remaining: 7,
                 type: 'count'
             });
 
@@ -356,10 +360,12 @@ function renderRoad() {
             let cur = new Date(totalRangeStart);
             while (cur <= totalRangeEnd) {
                 if (cur.getDate() === 1) {
+                    const remaining = timeUtils.calcCalendarDays(cur, end);
                     milestones.push({
                         x: getX(cur),
                         label: `${cur.getMonth() + 1}月`,
                         dateLabel: '1日',
+                        remaining: remaining > 0 ? remaining : null,
                         type: 'month'
                     });
                 }
@@ -384,6 +390,7 @@ function renderRoad() {
                         <div class="road-tick ${m.type}" style="left: ${m.x}%">
                             <span class="tick-label">${m.label}</span>
                             <span class="tick-date">${m.dateLabel}</span>
+                            ${m.remaining !== null ? `<span class="tick-rem">あと${m.remaining}日</span>` : ''}
                         </div>
                     `).join('')}
                 </div>
