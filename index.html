@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>TimeMark</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="star-background" id="star-field"></div>
+
+    <main id="app-content">
+        <!-- Views will be injected here -->
+        <section id="list-view" class="view">
+            <h1 class="glow-text">Targets</h1>
+            <div id="target-list" class="list-container">
+                <!-- Target cards will appear here -->
+            </div>
+            <button id="add-target-btn" class="fab">+</button>
+        </section>
+
+        <section id="detail-view" class="view hidden">
+            <!-- Detail view content -->
+        </section>
+
+        <section id="road-view" class="view hidden">
+            <!-- Road view content (Canvas) -->
+        </section>
+    </main>
+
+    <nav class="app-nav">
+        <a href="#" class="nav-item active" data-view="list">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+            <span>List</span>
+        </a>
+        <a href="#" class="nav-item" data-view="road">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"/></svg>
+            <span>Road</span>
+        </a>
+    </nav>
+
+    <script src="app.js" type="module"></script>
+</body>
+</html>
