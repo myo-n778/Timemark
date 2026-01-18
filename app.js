@@ -625,21 +625,95 @@ function renderList() {
         }
 
         return `
-            <div class="card target-card" onclick="switchView('detail', '${target.id}')">
-                <div class="target-info">
-                    <div class="badge-mini" style="background: ${target.type === 'event' ? 'var(--border-color)' : 'var(--primary-glow)'}">
-                        ${target.type === 'event' ? 'EVENT' : 'STUDY'}
+            <div class="target-item" data-id="${target.id}" draggable="true">
+                <div style="display: flex; align-items: center;">
+                    <div class="drag-handle">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="4" y1="8" x2="20" y2="8"></line>
+                            <line x1="4" y1="16" x2="20" y2="16"></line>
+                        </svg>
                     </div>
-                    <h3 style="color: ${target.color}">${target.name}</h3>
-                    <p>${target.targetDate}</p>
+                    <div class="target-info">
+                        <div class="target-type-badge">${target.type.toUpperCase()}</div>
+                        <div class="target-name" style="color: ${target.color}">${target.name}</div>
+                        <div class="target-sub">${subDisplay}</div>
+                    </div>
                 </div>
-                <div class="target-days">
-                    <div class="days-main glow-text">${mainDisplay}</div>
-                    <div class="days-sub">${subDisplay}</div>
+                <div class="target-status">
+                    <div class="target-countdown glow-text">${mainDisplay}</div>
                 </div>
             </div>
         `;
     }).join('');
+
+    // Setup Drag and Drop
+    setupDragging(listContainer);
+}
+
+function setupDragging(container) {
+    let draggingItem = null;
+
+    container.querySelectorAll('.target-item').forEach(item => {
+        item.addEventListener('dragstart', (e) => {
+            draggingItem = item;
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        item.addEventListener('dragend', () => {
+            item.classList.remove('dragging');
+            draggingItem = null;
+
+            // Save new order
+            const newOrder = Array.from(container.querySelectorAll('.target-item'))
+                .map(el => el.dataset.id);
+
+            // Reorder state.targets based on this newOrder
+            const reorderedTargets = [];
+            newOrder.forEach(id => {
+                const t = state.targets.find(target => target.id === id);
+                if (t) reorderedTargets.push(t);
+            });
+
+            state.targets = reorderedTargets;
+            storage.save();
+        });
+
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            const afterElement = getDragAfterElement(container, e.clientY);
+            if (afterElement == null) {
+                container.appendChild(draggingItem);
+            } else {
+                container.insertBefore(draggingItem, afterElement);
+            }
+        });
+
+        // Handle item click (only if not dragging)
+        item.addEventListener('click', (e) => {
+            if (item.classList.contains('dragging')) return;
+            // If clicked on drag handle, don't trigger detail view? 
+            // Actually, for better UX, clicking anywhere BUT the handle can still work, 
+            // but usually we just handle the whole item. Let's ensure it's not a drag.
+            if (e.target.closest('.drag-handle')) return;
+
+            state.selectedTargetId = item.dataset.id;
+            switchView('detail');
+        });
+    });
+}
+
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.target-item:not(.dragging)')];
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
 function renderRoad() {

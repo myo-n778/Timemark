@@ -94,6 +94,38 @@ body {
     z-index: 100;
 }
 
+.target-item {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.target-item.dragging {
+    opacity: 0.5;
+    transform: scale(0.98);
+    border-style: dashed;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.drag-handle {
+    color: rgba(255, 255, 255, 0.3);
+    margin-right: 12px;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
 .nav-item {
     color: var(--text-sub);
     text-decoration: none;
