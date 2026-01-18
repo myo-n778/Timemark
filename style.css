@@ -103,6 +103,7 @@ body {
     align-items: center;
     gap: 4px;
     transition: color 0.3s ease;
+    flex: 1;
 }
 
 .nav-item.active {
@@ -120,6 +121,7 @@ main {
     flex: 1;
     overflow-y: auto;
     padding: var(--spacing-md) var(--spacing-md) 100px;
+    width: 100%;
 }
 
 /* FAB (Floating Action Button) */
@@ -127,7 +129,6 @@ main {
     position: fixed;
     right: var(--spacing-lg);
     bottom: calc(var(--spacing-lg) + 80px);
-    /* Above nav */
     width: 56px;
     height: 56px;
     border-radius: 50%;
@@ -242,6 +243,7 @@ main {
     border-radius: var(--radius-sm);
     color: var(--text-main);
     font-size: 16px;
+    outline: none;
 }
 
 .modal-actions {
@@ -257,6 +259,21 @@ main {
     border: none;
     cursor: pointer;
     font-weight: 600;
+    transition: opacity 0.2s;
+}
+
+.btn:active {
+    opacity: 0.7;
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-sub);
+}
+
+.btn-primary {
+    background: var(--primary-color);
+    color: white;
 }
 
 /* Detail View */
@@ -286,6 +303,7 @@ main {
     color: var(--text-main);
     border-radius: var(--radius-sm);
     padding: 4px 8px;
+    outline: none;
 }
 
 .task-section-header {
@@ -354,30 +372,7 @@ main {
     color: var(--text-sub);
 }
 
-/* iPad Detail View 2-column */
-@media (min-width: 768px) {
-    .task-list {
-        grid-template-columns: 1fr 1fr;
-    }
-}
-
-.btn-ghost {
-    background: transparent;
-    color: var(--text-sub);
-}
-
-.btn-primary {
-    background: var(--primary-color);
-    color: white;
-}
-
-/* Empty State */
-.empty-state {
-    text-align: center;
-    padding: var(--spacing-xl);
-    color: var(--text-sub);
-}
-/* Road View Styles */
+/* Road View */
 .road-scroller {
     width: 100vw;
     margin-left: calc(-1 * var(--spacing-md));
@@ -440,4 +435,39 @@ main {
     position: absolute;
     top: -20px;
     box-shadow: 0 0 8px currentColor;
+}
+
+/* Utilities */
+.hidden {
+    display: none !important;
+}
+
+.empty-state {
+    text-align: center;
+    padding: var(--spacing-xl);
+    color: var(--text-sub);
+}
+
+/* Responsive adjustments for iPad */
+@media (min-width: 768px) {
+    main {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .app-nav {
+        max-width: 800px;
+        left: 50%;
+        transform: translateX(-50%);
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    }
+
+    .task-list {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .fab {
+        right: calc(50% - 380px);
+        /* Position FAB relative to centered main */
+    }
 }

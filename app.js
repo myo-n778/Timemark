@@ -50,6 +50,7 @@ const timeUtils = {
     calcCalendarDays: (baseDate, targetDate) => {
         const start = timeUtils.startOfDay(baseDate);
         const end = timeUtils.startOfDay(targetDate);
+        if (!start || !end || isNaN(start) || isNaN(end)) return 0;
         const diff = end.getTime() - start.getTime();
         return Math.ceil(diff / (1000 * 60 * 60 * 24));
     },
@@ -69,6 +70,7 @@ const timeUtils = {
         let count = 0;
         let current = timeUtils.startOfDay(baseDate);
         const end = timeUtils.startOfDay(targetDate);
+        if (!current || !end || isNaN(current) || isNaN(end)) return 0;
 
         while (current < end) {
             if (!timeUtils.isExcluded(current)) {
@@ -86,6 +88,7 @@ const timeUtils = {
         let total = 0;
         let current = timeUtils.startOfDay(baseDate);
         const end = timeUtils.startOfDay(targetDate);
+        if (!current || !end || isNaN(current) || isNaN(end)) return 0;
 
         const dayMap = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -109,7 +112,6 @@ const timeUtils = {
 
         // If all weights are 0, distribute equally
         const useEqual = totalWeight === 0;
-        const baseWeight = useEqual ? 1 : totalWeight;
 
         let allocated = tasks.map(t => {
             const weight = useEqual ? 1 : (t.weight || 0);
@@ -127,7 +129,7 @@ const timeUtils = {
 
         if (diff !== 0 && allocated.length > 0) {
             const sortedByWeight = [...allocated].sort((a, b) => b.weight - a.weight);
-            sortedByWeight[0].hours += diff;
+            sortedByWeight[0].hours = Math.max(0, sortedByWeight[0].hours + diff);
         }
 
         return allocated;
@@ -307,7 +309,7 @@ function renderRoad() {
                 <div class="day-label">${current.getMonth() + 1}/${current.getDate()}</div>
                 <div class="road-path">
                     ${isToday ? '<div class="orb"></div>' : ''}
-                    ${dayTargets.map(t => `<div class="road-target-marker" style="background: ${t.color}"></div>`).join('')}
+                    ${dayTargets.map(t => `<div class="road-target-marker" style="background: ${t.color}; color: ${t.color}"></div>`).join('')}
                 </div>
             </div>
         `;
@@ -321,6 +323,14 @@ function renderRoad() {
             </div>
         </div>
     `;
+
+    // Center today's orb
+    const todayElem = roadContainer.querySelector('.is-today');
+    if (todayElem) {
+        setTimeout(() => {
+            todayElem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }, 100);
+    }
 }
 
 function showAddTargetModal() {
@@ -421,8 +431,9 @@ function initStars() {
     }
 }
 
-// Global exposure for onclick
+// Global exposure
 window.switchView = switchView;
+window.showAddTargetModal = showAddTargetModal;
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -438,54 +449,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Setup FAB
+    const addBtn = document.getElementById('add-target-btn');
+    if (addBtn) {
+        addBtn.onclick = showAddTargetModal;
+    }
+
     // Recover previous state
     const lastView = localStorage.getItem('timemark_last_view') || 'list';
     const lastId = localStorage.getItem('timemark_selected_id');
     switchView(lastView, lastId);
 });
-
-function renderRoad() {
-    const roadContainer = document.getElementById('road-view');
-    if (!roadContainer) return;
-
-    const today = new Date();
-    const range = 60; // +/- 30 days
-    
-    let daysHtml = '';
-    for (let i = -10; i < range; i++) {
-        const current = new Date(today);
-        current.setDate(today.getDate() + i);
-        const dateStr = current.toISOString().split('T')[0];
-        const isToday = i === 0;
-        
-        // Find targets on this day
-        const dayTargets = state.targets.filter(t => t.targetDate === dateStr);
-        
-        daysHtml += `
-            <div class="road-day ${isToday ? 'is-today' : ''}" data-date="${dateStr}">
-                <div class="day-label">${current.getMonth() + 1}/${current.getDate()}</div>
-                <div class="road-path">
-                    ${isToday ? '<div class="orb"></div>' : ''}
-                    ${dayTargets.map(t => `<div class="road-target-marker" style="background: ${t.color}; color: ${t.color}"></div>`).join('')}
-                </div>
-            </div>
-        `;
-    }
-
-    roadContainer.innerHTML = `
-        <h1 class="glow-text">Time Road</h1>
-        <div class="road-scroller">
-            <div class="road-track">
-                ${daysHtml}
-            </div>
-        </div>
-    `;
-
-    // Center today's orb
-    const todayElem = roadContainer.querySelector('.is-today');
-    if (todayElem) {
-        setTimeout(() => {
-            todayElem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-        }, 100);
-    }
-}
