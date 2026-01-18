@@ -296,19 +296,98 @@ function renderSettings() {
         console.log(`Imported ${count} dates from ICS`);
     }
 
+    container.querySelector('#add-exception-btn').onclick = () => {
+        showAddExceptionModal();
+    };
+
+    function showAddExceptionModal() {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <h2 class="modal-title">例外日の設定</h2>
+                <div class="form-group">
+                    <label>日付</label>
+                    <input type="date" id="exc-date" value="${new Date().toISOString().split('T')[0]}">
+                </div>
+                <div class="form-group">
+                    <label>設定内容</label>
+                    <div class="type-selector">
+                        <label class="type-option">
+                            <input type="radio" name="exc-type" value="0" checked>
+                            <span>お休み<br><small>（0時間）</small></span>
+                        </label>
+                        <label class="type-option">
+                            <input type="radio" name="exc-type" value="custom">
+                            <span>カスタム<br><small>（任意時間）</small></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group" id="exc-custom-group" style="display: none;">
+                    <label>稼働時間 (h)</label>
+                    <input type="number" id="exc-hours" value="0" min="0" max="24" step="0.5">
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-ghost" id="exc-cancel">キャンセル</button>
+                    <button class="btn btn-primary" id="exc-save">保存</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const typeInputs = modal.querySelectorAll('input[name="exc-type"]');
+        const customGroup = modal.querySelector('#exc-custom-group');
+
+        typeInputs.forEach(input => {
+            input.onchange = () => {
+                customGroup.style.display = input.value === 'custom' ? 'block' : 'none';
+            };
+        });
+
+        modal.querySelector('#exc-cancel').onclick = () => modal.remove();
+        modal.querySelector('#exc-save').onclick = () => {
+            const date = modal.querySelector('#exc-date').value;
+            const type = modal.querySelector('input[name="exc-type"]:checked').value;
+            const hours = type === '0' ? 0 : parseFloat(modal.querySelector('#exc-hours').value) || 0;
+
+            if (date) {
+                state.customDates[date] = hours;
+                storage.save();
+                modal.remove();
+                renderSettings();
+            }
+        };
+    }
+
     function parseCSV(content) {
         const lines = content.split(/\r?\n/);
         let count = 0;
-        lines.forEach(line => {
-            const parts = line.split(',');
-            if (parts.length >= 1) {
-                const dateStr = parts[0].trim();
-                // Validate YYYY-MM-DD
-                if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-                    const hours = parseFloat(parts[1]) || 0;
-                    state.customDates[dateStr] = hours;
-                    count++;
+        lines.forEach((line, index) => {
+            if (!line.trim()) return;
+
+            // Clean quotes and split
+            const parts = line.split(',').map(s => s.replace(/^["']|["']$/g, '').trim());
+            let dateStr = parts[0];
+
+            // Handle YYYY/M/D format (like syukujitsu.csv)
+            if (dateStr.includes('/')) {
+                const dateParts = dateStr.split('/');
+                if (dateParts.length === 3) {
+                    const y = dateParts[0];
+                    const m = dateParts[1].padStart(2, '0');
+                    const d = dateParts[2].padStart(2, '0');
+                    dateStr = `${y}-${m}-${d}`;
                 }
+            }
+
+            // Skip header or malformed entries
+            if (index === 0 && (dateStr.toLowerCase().includes('date') || dateStr.includes('日'))) return;
+
+            // Validate YYYY-MM-DD
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                const hours = parts[1] && !isNaN(parts[1]) ? parseFloat(parts[1]) : 0;
+                state.customDates[dateStr] = hours;
+                count++;
             }
         });
         console.log(`Imported ${count} entries from CSV`);
@@ -478,8 +557,8 @@ function renderList() {
             subDisplay = '全日数カウント';
         } else {
             const totalHours = timeUtils.calcTotalHours(today, targetDate);
-            mainDisplay = `あと ${totalHours}h`;
-            subDisplay = `暦: ${calDays}日 / 可処分`;
+            mainDisplay = `あと ${calDays}日 / ${totalHours}h`;
+            subDisplay = `暦日数計 / 総可処分時間`;
         }
 
         return `
