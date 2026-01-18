@@ -12,6 +12,8 @@ const state = {
         sat: 10, sun: 11
     }
 };
+// target structure example:
+// { id, name, targetDate, color, type: 'study'|'event', tasks: [], createdAt }
 
 // --- Storage ---
 const storage = {
@@ -171,6 +173,42 @@ function renderDetail(target) {
     const detailContainer = document.getElementById('detail-view');
     if (!detailContainer) return;
 
+    if (target.type === 'event') {
+        renderEventDetail(target, detailContainer);
+    } else {
+        renderStudyDetail(target, detailContainer);
+    }
+}
+
+function renderEventDetail(target, container) {
+    const today = new Date();
+    const targetDate = new Date(target.targetDate);
+    const calDays = timeUtils.calcCalendarDays(today, targetDate);
+
+    container.innerHTML = `
+        <header class="detail-header">
+            <button class="btn btn-ghost" onclick="switchView('list')" style="padding-left: 0; margin-bottom: 16px;">← 戻る</button>
+            <div class="badge">イベント</div>
+            <h1 style="color: ${target.color}">${target.name}</h1>
+            <div class="total-hours-hero glow-text">あと ${calDays} 日</div>
+            <p style="color: var(--text-sub)">目標日: ${target.targetDate}</p>
+        </header>
+        <div class="card">
+            <p>このターゲットは「イベント」として設定されています。日数のカウントダウンのみを行います。</p>
+            <button class="btn btn-ghost" id="delete-target-btn" style="color: var(--accent-red); margin-top: 20px;">このターゲットを削除</button>
+        </div>
+    `;
+
+    container.querySelector('#delete-target-btn').onclick = () => {
+        if (confirm('このターゲットを削除しますか？')) {
+            state.targets = state.targets.filter(t => t.id !== target.id);
+            storage.save();
+            switchView('list');
+        }
+    };
+}
+
+function renderStudyDetail(target, container) {
     const baseDateStr = localStorage.getItem(`base_date_${target.id}`) || new Date().toISOString().split('T')[0];
     const baseDate = new Date(baseDateStr);
     const targetDate = new Date(target.targetDate);
@@ -179,9 +217,10 @@ function renderDetail(target) {
     // Allocate hours to tasks
     const tasksWithHours = timeUtils.allocateTaskHours(totalHours, target.tasks);
 
-    detailContainer.innerHTML = `
+    container.innerHTML = `
         <header class="detail-header">
             <button class="btn btn-ghost" onclick="switchView('list')" style="padding-left: 0; margin-bottom: 16px;">← 戻る</button>
+            <div class="badge" style="border-color: var(--accent-green); color: var(--accent-green)">勉強・仕事</div>
             <h1 style="color: ${target.color}">${target.name}</h1>
             <div class="total-hours-hero glow-text">あと ${totalHours} 時間</div>
             <div class="base-date-selector">
@@ -191,8 +230,8 @@ function renderDetail(target) {
 
         <section class="task-section">
             <div class="task-section-header">
-                <h2>タスク配分</h2>
-                <button class="btn btn-ghost" id="reset-weights-btn">均等に戻す</button>
+                <h2>タスク配分（時間の折半）</h2>
+                <button class="btn btn-ghost" id="reset-weights-btn">均等（折半）に戻す</button>
             </div>
             <div class="task-list" id="detail-task-list">
                 ${tasksWithHours.map(task => `
@@ -208,19 +247,20 @@ function renderDetail(target) {
                     </div>
                 `).join('')}
                 <div class="task-item" style="border-style: dashed; display: flex; justify-content: center; cursor: pointer;" id="add-task-item">
-                    <span style="color: var(--text-sub)">+ タスクを追加</span>
+                    <span style="color: var(--text-sub)">+ 科目・タスクを追加</span>
                 </div>
             </div>
+            <button class="btn btn-ghost" id="delete-target-btn" style="color: var(--accent-red); margin-top: 40px; width: 100%;">このターゲットを削除</button>
         </section>
     `;
 
     // Event Listeners
-    detailContainer.querySelector('#base-date-input').onchange = (e) => {
+    container.querySelector('#base-date-input').onchange = (e) => {
         localStorage.setItem(`base_date_${target.id}`, e.target.value);
         renderDetail(target);
     };
 
-    detailContainer.querySelectorAll('.weight-slider').forEach(slider => {
+    container.querySelectorAll('.weight-slider').forEach(slider => {
         slider.oninput = (e) => {
             const taskId = e.target.dataset.taskId;
             const weight = parseInt(e.target.value);
@@ -228,27 +268,31 @@ function renderDetail(target) {
             if (task) {
                 task.weight = weight;
                 storage.save();
-                renderDetail(target);
+                renderStudyDetail(target, container); // Partial re-render for performance
             }
         };
     });
 
-    detailContainer.querySelector('#reset-weights-btn').onclick = () => {
+    container.querySelector('#reset-weights-btn').onclick = () => {
         target.tasks.forEach(t => t.weight = 1);
         storage.save();
         renderDetail(target);
     };
 
-    detailContainer.querySelector('#add-task-item').onclick = () => {
-        const title = prompt('タスク名を入力してください');
+    container.querySelector('#add-task-item').onclick = () => {
+        const title = prompt('科目・タスク名を入力してください');
         if (title) {
-            target.tasks.push({
-                id: crypto.randomUUID(),
-                title: title,
-                weight: 1
-            });
+            target.tasks.push({ id: crypto.randomUUID(), title: title, weight: 1 });
             storage.save();
             renderDetail(target);
+        }
+    };
+
+    container.querySelector('#delete-target-btn').onclick = () => {
+        if (confirm('このターゲットを削除しますか？')) {
+            state.targets = state.targets.filter(t => t.id !== target.id);
+            storage.save();
+            switchView('list');
         }
     };
 }
@@ -267,20 +311,41 @@ function renderList() {
     }
 
     const today = new Date();
-    listContainer.innerHTML = state.targets.map(target => {
+
+    // Sort targets: Study first, then Event
+    const sortedTargets = [...state.targets].sort((a, b) => {
+        if (a.type === b.type) return 0;
+        return a.type === 'study' ? -1 : 1;
+    });
+
+    listContainer.innerHTML = sortedTargets.map(target => {
         const targetDate = new Date(target.targetDate);
         const calDays = timeUtils.calcCalendarDays(today, targetDate);
-        const workDays = timeUtils.calcWorkingDays(today, targetDate);
+
+        let mainDisplay = '';
+        let subDisplay = '';
+
+        if (target.type === 'event') {
+            mainDisplay = `あと ${calDays}日`;
+            subDisplay = '全日数カウント';
+        } else {
+            const totalHours = timeUtils.calcTotalHours(today, targetDate);
+            mainDisplay = `あと ${totalHours}h`;
+            subDisplay = `暦: ${calDays}日 / 可処分`;
+        }
 
         return `
             <div class="card target-card" onclick="switchView('detail', '${target.id}')">
                 <div class="target-info">
+                    <div class="badge-mini" style="background: ${target.type === 'event' ? 'var(--border-color)' : 'var(--primary-glow)'}">
+                        ${target.type === 'event' ? 'EVENT' : 'STUDY'}
+                    </div>
                     <h3 style="color: ${target.color}">${target.name}</h3>
                     <p>${target.targetDate}</p>
                 </div>
                 <div class="target-days">
-                    <div class="days-main glow-text">あと ${calDays}日</div>
-                    <div class="days-sub">稼働日: ${workDays}日</div>
+                    <div class="days-main glow-text">${mainDisplay}</div>
+                    <div class="days-sub">${subDisplay}</div>
                 </div>
             </div>
         `;
@@ -420,21 +485,33 @@ function showAddTargetModal() {
         <div class="modal-content">
             <h2 class="modal-title">新規ターゲット追加</h2>
             <div class="form-group">
-                <label>ターゲット名</label>
-                <input type="text" id="new-target-name" placeholder="例: 資格試験">
+                <label>種別</label>
+                <div class="type-selector">
+                    <label class="type-option">
+                        <input type="radio" name="target-type" value="study" checked>
+                        <span>勉強・仕事<br><small>（時間管理あり）</small></span>
+                    </label>
+                    <label class="type-option">
+                        <input type="radio" name="target-type" value="event" >
+                        <span>イベント<br><small>（日数のみ）</small></span>
+                    </label>
+                </div>
             </div>
             <div class="form-group">
-                <label>締切日</label>
+                <label>ターゲット名（目的）</label>
+                <input type="text" id="new-target-name" placeholder="例: 英検準1級、定期テスト">
+            </div>
+            <div class="form-group">
+                <label>締切日（目標日）</label>
                 <input type="date" id="new-target-date" value="${new Date().toISOString().split('T')[0]}">
             </div>
             <div class="form-group">
                 <label>カラー</label>
                 <select id="new-target-color">
                     <option value="#ff8c00" selected>オレンジ</option>
-                    <option value="#ff4b4b">レッド</option>
-                    <option value="#ffeb3b">イエロー</option>
-                    <option value="#00e676">グリーン</option>
+                    <option value="#00e676">ミントグリーン</option>
                     <option value="#2196f3">ブルー</option>
+                    <option value="#ff4b4b">レッド</option>
                     <option value="#9c27b0">パープル</option>
                 </select>
             </div>
@@ -448,6 +525,7 @@ function showAddTargetModal() {
 
     modal.querySelector('#modal-cancel').onclick = () => modal.remove();
     modal.querySelector('#modal-save').onclick = () => {
+        const type = modal.querySelector('input[name="target-type"]:checked').value;
         const name = document.getElementById('new-target-name').value;
         const date = document.getElementById('new-target-date').value;
         const color = document.getElementById('new-target-color').value;
@@ -455,12 +533,16 @@ function showAddTargetModal() {
         if (name && date) {
             const newTarget = {
                 id: crypto.randomUUID(),
+                type: type,
                 name: name,
                 targetDate: date,
                 color: color,
                 tasks: [],
                 createdAt: Date.now()
             };
+            if (type === 'study') {
+                newTarget.tasks.push({ id: crypto.randomUUID(), title: '基本学習', weight: 1 });
+            }
             state.targets.push(newTarget);
             storage.save();
             modal.remove();

@@ -124,6 +124,69 @@ main {
     width: 100%;
 }
 
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: bold;
+    border: 1px solid var(--border-color);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.badge-mini {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+
+/* Modal Type Selector */
+.type-selector {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.type-option {
+    flex: 1;
+    position: relative;
+    cursor: pointer;
+}
+
+.type-option input {
+    position: absolute;
+    opacity: 0;
+}
+
+.type-option span {
+    display: block;
+    padding: var(--spacing-sm);
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-sub);
+    transition: all 0.2s;
+}
+
+.type-option span small {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.type-option input:checked+span {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: var(--primary-glow);
+}
+
 /* FAB (Floating Action Button) */
 .fab {
     position: fixed;
