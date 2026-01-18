@@ -217,10 +217,17 @@ function renderSettings() {
         
         <section class="settings-section">
             <h2>デフォルトの可処分時間</h2>
-            <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px;">
-                <span style="font-size: 11px; white-space: nowrap;">全曜日を一括設定:</span>
-                <input type="number" id="bulk-hour-input" value="8" min="0" max="24" step="0.5" style="width: 50px; text-align: center;">
-                <button class="btn btn-primary btn-mini" id="bulk-apply-btn">適用</button>
+            <div style="margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px;">
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    <span style="font-size: 11px; white-space: nowrap;">平日一括:</span>
+                    <input type="number" id="weekday-bulk-input" value="4" min="0" max="24" step="0.5" style="width: 45px; text-align: center;">
+                    <button class="btn btn-ghost btn-mini" id="weekday-apply-btn">適用</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    <span style="font-size: 11px; white-space: nowrap;">休日一括:</span>
+                    <input type="number" id="weekend-bulk-input" value="10" min="0" max="24" step="0.5" style="width: 45px; text-align: center;">
+                    <button class="btn btn-primary btn-mini" id="weekend-apply-btn">適用</button>
+                </div>
             </div>
             <div class="settings-group" id="weekly-hours-grid" style="display: flex; flex-wrap: nowrap; gap: 4px; padding: 10px 4px; overflow-x: auto;">
                 ${['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun', 'holiday'].map(day => `
@@ -231,7 +238,7 @@ function renderSettings() {
                     </div>
                 `).join('')}
             </div>
-            <p style="font-size: 10px; color: var(--text-sub); margin-top: 4px; text-align: center;">通常の曜日ごとの時間（一括設定後に個別修正可）</p>
+            <p style="font-size: 10px; color: var(--text-sub); margin-top: 4px; text-align: center;">通常の曜日ごとの時間（一括適用後に個別調整可）</p>
         </section>
 
         <section class="settings-section">
@@ -286,11 +293,22 @@ function renderSettings() {
         };
     });
 
-    container.querySelector('#bulk-apply-btn').onclick = () => {
-        const val = parseFloat(container.querySelector('#bulk-hour-input').value) || 0;
-        container.querySelectorAll('.hour-input').forEach(input => {
-            input.value = val;
-            state.weeklyHours[input.dataset.day] = val;
+    container.querySelector('#weekday-apply-btn').onclick = () => {
+        const val = parseFloat(container.querySelector('#weekday-bulk-input').value) || 0;
+        ['mon', 'tue', 'wed', 'thu', 'fri'].forEach(day => {
+            state.weeklyHours[day] = val;
+            const input = container.querySelector(`.hour-input[data-day="${day}"]`);
+            if (input) input.value = val;
+        });
+        storage.save();
+    };
+
+    container.querySelector('#weekend-apply-btn').onclick = () => {
+        const val = parseFloat(container.querySelector('#weekend-bulk-input').value) || 0;
+        ['sat', 'sun', 'holiday'].forEach(day => {
+            state.weeklyHours[day] = val;
+            const input = container.querySelector(`.hour-input[data-day="${day}"]`);
+            if (input) input.value = val;
         });
         storage.save();
     };
@@ -354,10 +372,17 @@ function renderSettings() {
                     </div>
                 </div>
                 <h3>期間中の曜日別時間</h3>
-                <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px;">
-                    <span style="font-size: 11px;">一括:</span>
-                    <input type="number" id="per-bulk-input" value="8" min="0" max="24" step="0.5" style="width: 50px; text-align: center;">
-                    <button class="btn btn-ghost btn-mini" id="per-bulk-apply">一括適用</button>
+                <div style="margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <span style="font-size: 11px;">平日:</span>
+                        <input type="number" id="per-weekday-bulk" value="4" min="0" max="24" step="0.5" style="width: 45px; text-align: center;">
+                        <button class="btn btn-ghost btn-mini" id="per-weekday-apply">適用</button>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <span style="font-size: 11px;">休日:</span>
+                        <input type="number" id="per-weekend-bulk" value="10" min="0" max="24" step="0.5" style="width: 45px; text-align: center;">
+                        <button class="btn btn-ghost btn-mini" id="per-weekend-apply">適用</button>
+                    </div>
                 </div>
                 <div class="settings-group" style="display: flex; gap: 4px; padding: 10px 4px;">
                     ${Object.keys(dayMap).map(day => `
@@ -376,10 +401,19 @@ function renderSettings() {
         `;
         document.body.appendChild(modal);
 
-        modal.querySelector('#per-bulk-apply').onclick = () => {
-            const val = parseFloat(modal.querySelector('#per-bulk-input').value) || 0;
-            modal.querySelectorAll('.per-hour-input').forEach(input => {
-                input.value = val;
+        modal.querySelector('#per-weekday-apply').onclick = () => {
+            const val = parseFloat(modal.querySelector('#per-weekday-bulk').value) || 0;
+            ['mon', 'tue', 'wed', 'thu', 'fri'].forEach(day => {
+                const input = modal.querySelector(`.per-hour-input[data-day="${day}"]`);
+                if (input) input.value = val;
+            });
+        };
+
+        modal.querySelector('#per-weekend-apply').onclick = () => {
+            const val = parseFloat(modal.querySelector('#per-weekend-bulk').value) || 0;
+            ['sat', 'sun'].forEach(day => {
+                const input = modal.querySelector(`.per-hour-input[data-day="${day}"]`);
+                if (input) input.value = val;
             });
         };
 
