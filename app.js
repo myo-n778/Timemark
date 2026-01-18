@@ -216,6 +216,20 @@ function renderSettings() {
         <h1 class="glow-text">Settings</h1>
         
         <section class="settings-section">
+            <h2>デフォルトの可処分時間</h2>
+            <div class="settings-group" style="display: flex; flex-wrap: nowrap; gap: 4px; padding: 10px 4px; overflow-x: auto;">
+                ${['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun', 'holiday'].map(day => `
+                    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 40px;">
+                        <label style="font-size: 10px; margin-bottom: 4px; color: var(--text-sub)">${dayLabels[day].charAt(0)}</label>
+                        <input type="number" class="hour-input" data-day="${day}" value="${state.weeklyHours[day]}" min="0" max="24" step="0.5" 
+                               style="width: 100%; padding: 4px 2px; text-align: center; font-size: 13px; min-height: 32px;">
+                    </div>
+                `).join('')}
+            </div>
+            <p style="font-size: 10px; color: var(--text-sub); margin-top: 4px; text-align: center;">通常の曜日ごとの時間（祝日は一番右）</p>
+        </section>
+
+        <section class="settings-section">
             <div class="task-section-header">
                 <h2>期間指定（長期休暇など）</h2>
                 <button class="btn btn-primary btn-sm" id="add-period-btn">+ 期間を追加</button>
@@ -327,11 +341,12 @@ function renderSettings() {
                     </div>
                 </div>
                 <h3>期間中の曜日別時間</h3>
-                <div class="settings-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div class="settings-group" style="display: flex; gap: 4px; padding: 10px 4px;">
                     ${Object.keys(dayMap).map(day => `
-                        <div class="settings-row" style="padding: 4px 0;">
-                            <label>${dayMap[day]}</label>
-                            <input type="number" class="per-hour-input" data-day="${day}" value="8" min="0" max="24" step="0.5" style="width: 50px;">
+                        <div style="flex: 1; display: flex; flex-direction: column; align-items: center;">
+                            <label style="font-size: 11px; margin-bottom: 4px;">${dayMap[day]}</label>
+                            <input type="number" class="per-hour-input" data-day="${day}" value="8" min="0" max="24" step="0.5" 
+                                   style="width: 100%; text-align: center; padding: 4px 2px; font-size: 13px; min-height: 32px;">
                         </div>
                     `).join('')}
                 </div>
