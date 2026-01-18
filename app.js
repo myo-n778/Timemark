@@ -327,21 +327,41 @@ function renderRoad() {
             [0.1, 0.25, 0.5, 0.75, 0.9].forEach(ratio => {
                 const mDate = new Date(start);
                 mDate.setDate(start.getDate() + Math.round(totalDays * ratio));
-                milestones.push({ x: getX(mDate), label: `${Math.round(ratio * 100)}%`, type: 'ratio' });
+                milestones.push({
+                    x: getX(mDate),
+                    label: `${Math.round(ratio * 100)}%`,
+                    dateLabel: `${mDate.getMonth() + 1}/${mDate.getDate()}`,
+                    type: 'ratio'
+                });
             });
 
             // カウントダウンマイルストーン (残り10日、残り1週間)
             const d10 = new Date(end); d10.setDate(end.getDate() - 10);
-            if (d10 > start) milestones.push({ x: getX(d10), label: '残り10日', type: 'count' });
+            if (d10 > start) milestones.push({
+                x: getX(d10),
+                label: '残り10日',
+                dateLabel: `${d10.getMonth() + 1}/${d10.getDate()}`,
+                type: 'count'
+            });
 
             const w1 = new Date(end); w1.setDate(end.getDate() - 7);
-            if (w1 > start) milestones.push({ x: getX(w1), label: '残り1週', type: 'count' });
+            if (w1 > start) milestones.push({
+                x: getX(w1),
+                label: '残り1週',
+                dateLabel: `${w1.getMonth() + 1}/${w1.getDate()}`,
+                type: 'count'
+            });
 
             // 月替わり
             let cur = new Date(totalRangeStart);
             while (cur <= totalRangeEnd) {
                 if (cur.getDate() === 1) {
-                    milestones.push({ x: getX(cur), label: `${cur.getMonth() + 1}月`, type: 'month' });
+                    milestones.push({
+                        x: getX(cur),
+                        label: `${cur.getMonth() + 1}月`,
+                        dateLabel: '1日',
+                        type: 'month'
+                    });
                 }
                 cur.setDate(cur.getDate() + 1);
             }
@@ -363,6 +383,7 @@ function renderRoad() {
                     ${milestones.map(m => `
                         <div class="road-tick ${m.type}" style="left: ${m.x}%">
                             <span class="tick-label">${m.label}</span>
+                            <span class="tick-date">${m.dateLabel}</span>
                         </div>
                     `).join('')}
                 </div>

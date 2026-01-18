@@ -499,9 +499,22 @@ main {
     white-space: nowrap;
 }
 
+.tick-date {
+    position: absolute;
+    left: 4px;
+    font-size: 9px;
+    color: var(--text-sub);
+    opacity: 0.7;
+    white-space: nowrap;
+}
+
 /* Alternate tick labels up/down */
 .road-tick.ratio .tick-label {
     top: -20px;
+}
+
+.road-tick.ratio .tick-date {
+    top: -8px;
 }
 
 .road-tick.count .tick-label {
@@ -510,10 +523,21 @@ main {
     font-weight: bold;
 }
 
+.road-tick.count .tick-date {
+    bottom: -36px;
+    color: var(--secondary-color);
+}
+
 .road-tick.month .tick-label {
-    bottom: -40px;
+    bottom: -44px;
     color: var(--primary-color);
     font-size: 12px;
+    font-weight: bold;
+}
+
+.road-tick.month .tick-date {
+    bottom: -56px;
+    color: var(--primary-color);
 }
 
 .road-stats-row {
