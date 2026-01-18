@@ -511,10 +511,14 @@ main {
 /* Alternate tick labels up/down */
 .road-tick.ratio .tick-label {
     top: -20px;
+    color: var(--accent-green);
+    font-weight: bold;
 }
 
 .road-tick.ratio .tick-date {
     top: -8px;
+    color: var(--accent-green);
+    opacity: 0.9;
 }
 
 .road-tick.count .tick-label {
