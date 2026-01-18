@@ -244,6 +244,28 @@ main {
     color: var(--text-main);
     font-size: 16px;
     outline: none;
+    cursor: pointer;
+    min-height: 44px;
+    /* Sufficient tap target height */
+}
+
+/* Force calendar icon visibility in modern browsers */
+.form-group input[type="date"]::-webkit-calendar-picker-indicator {
+    background: transparent;
+    cursor: pointer;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: auto;
+}
+
+.form-group input[type="date"] {
+    position: relative;
+    -webkit-appearance: none;
+    appearance: none;
 }
 
 .modal-actions {
@@ -298,12 +320,25 @@ main {
 }
 
 .base-date-selector input {
-    background: var(--surface-color);
-    border: 1px solid var(--border-color);
     color: var(--text-main);
     border-radius: var(--radius-sm);
     padding: 4px 8px;
     outline: none;
+    cursor: pointer;
+    position: relative;
+    min-height: 32px;
+}
+
+.base-date-selector input[type="date"]::-webkit-calendar-picker-indicator {
+    background: transparent;
+    cursor: pointer;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: auto;
 }
 
 .task-section-header {
