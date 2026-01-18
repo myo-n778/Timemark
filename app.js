@@ -292,24 +292,69 @@ function renderRoad() {
     if (!roadContainer) return;
 
     const today = new Date();
-    const range = 60; // +/- 30 days
+    const range = 60; // 表示期間 (+/- 50日程度に拡張)
+
+    // マイルストーン計算用の準備
+    const milestones = [];
+    state.targets.forEach(target => {
+        const start = new Date(target.createdAt || Date.now());
+        const end = new Date(target.targetDate);
+        const totalDays = timeUtils.calcCalendarDays(start, end);
+
+        if (totalDays > 0) {
+            // 25%, 50%, 75% の地点を算出
+            [0.25, 0.5, 0.75].forEach(ratio => {
+                const mDate = new Date(start);
+                mDate.setDate(start.getDate() + Math.round(totalDays * ratio));
+                milestones.push({
+                    dateStr: mDate.toISOString().split('T')[0],
+                    label: `${Math.round(ratio * 100)}%`,
+                    targetName: target.name,
+                    remaining: Math.round(totalDays * (1 - ratio)),
+                    color: target.color
+                });
+            });
+            // 登録日 (0%)
+            milestones.push({
+                dateStr: start.toISOString().split('T')[0],
+                label: 'START',
+                targetName: target.name,
+                color: target.color
+            });
+        }
+    });
 
     let daysHtml = '';
-    for (let i = -10; i < range; i++) {
+    let lastMonth = -1;
+
+    for (let i = -15; i < range; i++) {
         const current = new Date(today);
         current.setDate(today.getDate() + i);
         const dateStr = current.toISOString().split('T')[0];
         const isToday = i === 0;
+        const currentMonth = current.getMonth();
 
-        // Find targets on this day
+        // 月替わり判定
+        const isMonthEdge = lastMonth !== -1 && lastMonth !== currentMonth;
+        lastMonth = currentMonth;
+
+        // 指定日のターゲットとマイルストーン抽出
         const dayTargets = state.targets.filter(t => t.targetDate === dateStr);
+        const dayMilestones = milestones.filter(m => m.dateStr === dateStr);
 
         daysHtml += `
-            <div class="road-day ${isToday ? 'is-today' : ''}" data-date="${dateStr}">
-                <div class="day-label">${current.getMonth() + 1}/${current.getDate()}</div>
+            <div class="road-day ${isToday ? 'is-today' : ''} ${isMonthEdge ? 'month-edge' : ''}" data-date="${dateStr}">
+                ${isMonthEdge ? `<div class="month-label">${current.getMonth() + 1}月</div>` : ''}
+                <div class="day-label">${current.getDate()}</div>
                 <div class="road-path">
                     ${isToday ? '<div class="orb"></div>' : ''}
-                    ${dayTargets.map(t => `<div class="road-target-marker" style="background: ${t.color}; color: ${t.color}"></div>`).join('')}
+                    ${dayTargets.map(t => `<div class="road-target-marker" style="background: ${t.color}; color: ${t.color}" title="${t.name}"></div>`).join('')}
+                    ${dayMilestones.map(m => `
+                        <div class="road-milestone" style="border-color: ${m.color}">
+                            <span class="ms-label">${m.label}</span>
+                            ${m.remaining !== undefined ? `<span class="ms-rem">あと${m.remaining}日</span>` : ''}
+                        </div>
+                    `).join('')}
                 </div>
             </div>
         `;
