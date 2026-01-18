@@ -217,7 +217,12 @@ function renderSettings() {
         
         <section class="settings-section">
             <h2>デフォルトの可処分時間</h2>
-            <div class="settings-group" style="display: flex; flex-wrap: nowrap; gap: 4px; padding: 10px 4px; overflow-x: auto;">
+            <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px;">
+                <span style="font-size: 11px; white-space: nowrap;">全曜日を一括設定:</span>
+                <input type="number" id="bulk-hour-input" value="8" min="0" max="24" step="0.5" style="width: 50px; text-align: center;">
+                <button class="btn btn-primary btn-mini" id="bulk-apply-btn">適用</button>
+            </div>
+            <div class="settings-group" id="weekly-hours-grid" style="display: flex; flex-wrap: nowrap; gap: 4px; padding: 10px 4px; overflow-x: auto;">
                 ${['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun', 'holiday'].map(day => `
                     <div style="flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 40px;">
                         <label style="font-size: 10px; margin-bottom: 4px; color: var(--text-sub)">${dayLabels[day].charAt(0)}</label>
@@ -226,7 +231,7 @@ function renderSettings() {
                     </div>
                 `).join('')}
             </div>
-            <p style="font-size: 10px; color: var(--text-sub); margin-top: 4px; text-align: center;">通常の曜日ごとの時間（祝日は一番右）</p>
+            <p style="font-size: 10px; color: var(--text-sub); margin-top: 4px; text-align: center;">通常の曜日ごとの時間（一括設定後に個別修正可）</p>
         </section>
 
         <section class="settings-section">
@@ -272,15 +277,23 @@ function renderSettings() {
         </section>
     `;
 
-    // Event Listeners
+    // Event listeners for weekly hours
     container.querySelectorAll('.hour-input').forEach(input => {
         input.onchange = (e) => {
             const day = e.target.dataset.day;
-            const val = parseFloat(e.target.value) || 0;
-            state.weeklyHours[day] = val;
+            state.weeklyHours[day] = parseFloat(e.target.value) || 0;
             storage.save();
         };
     });
+
+    container.querySelector('#bulk-apply-btn').onclick = () => {
+        const val = parseFloat(container.querySelector('#bulk-hour-input').value) || 0;
+        container.querySelectorAll('.hour-input').forEach(input => {
+            input.value = val;
+            state.weeklyHours[input.dataset.day] = val;
+        });
+        storage.save();
+    };
 
     container.querySelector('#import-file-btn').onclick = () => {
         container.querySelector('#settings-file-input').click();
@@ -341,6 +354,11 @@ function renderSettings() {
                     </div>
                 </div>
                 <h3>期間中の曜日別時間</h3>
+                <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px;">
+                    <span style="font-size: 11px;">一括:</span>
+                    <input type="number" id="per-bulk-input" value="8" min="0" max="24" step="0.5" style="width: 50px; text-align: center;">
+                    <button class="btn btn-ghost btn-mini" id="per-bulk-apply">一括適用</button>
+                </div>
                 <div class="settings-group" style="display: flex; gap: 4px; padding: 10px 4px;">
                     ${Object.keys(dayMap).map(day => `
                         <div style="flex: 1; display: flex; flex-direction: column; align-items: center;">
@@ -358,6 +376,13 @@ function renderSettings() {
         `;
         document.body.appendChild(modal);
 
+        modal.querySelector('#per-bulk-apply').onclick = () => {
+            const val = parseFloat(modal.querySelector('#per-bulk-input').value) || 0;
+            modal.querySelectorAll('.per-hour-input').forEach(input => {
+                input.value = val;
+            });
+        };
+
         modal.querySelector('#per-cancel').onclick = () => modal.remove();
         modal.querySelector('#per-save').onclick = () => {
             const name = modal.querySelector('#per-name').value;
@@ -367,17 +392,17 @@ function renderSettings() {
             modal.querySelectorAll('.per-hour-input').forEach(input => {
                 weeklyHours[input.dataset.day] = parseFloat(input.value) || 0;
             });
-            // 祝日は日曜と同じか固定で一旦定義
             weeklyHours.holiday = weeklyHours.sun;
 
             if (name && start && end) {
-                state.timePeriods.push({
-                    id: crypto.randomUUID(),
-                    name, start, end, weeklyHours
-                });
+                // Use robust ID generation
+                const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
+                state.timePeriods.push({ id, name, start, end, weeklyHours });
                 storage.save();
                 modal.remove();
                 renderSettings();
+            } else {
+                alert('名前と期間を入力してください');
             }
         };
     }
