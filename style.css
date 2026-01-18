@@ -407,6 +407,124 @@ main {
     color: var(--text-sub);
 }
 
+/* Proportional Road View */
+.road-item-container {
+    margin-bottom: var(--spacing-xl);
+    padding: var(--spacing-md) 0;
+}
+
+.road-target-name {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: var(--spacing-xl);
+}
+
+.proportional-road {
+    position: relative;
+    height: 60px;
+    margin: 40px var(--spacing-md);
+    background: var(--border-color);
+    border-radius: 30px;
+}
+
+.road-bar-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 30px;
+    opacity: 0.1;
+}
+
+.road-progress-fill {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border-radius: 30px;
+    opacity: 0.3;
+}
+
+.road-point {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 100%;
+    background: var(--text-sub);
+    z-index: 10;
+}
+
+.road-point.today {
+    width: 0;
+    z-index: 20;
+}
+
+.road-point .orb {
+    width: 24px;
+    height: 24px;
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 0 20px 5px var(--primary-color);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.point-label {
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    font-weight: bold;
+    white-space: nowrap;
+    color: var(--text-main);
+}
+
+.road-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.tick-label {
+    position: absolute;
+    left: 4px;
+    font-size: 10px;
+    color: var(--text-sub);
+    white-space: nowrap;
+}
+
+/* Alternate tick labels up/down */
+.road-tick.ratio .tick-label {
+    top: -20px;
+}
+
+.road-tick.count .tick-label {
+    bottom: -24px;
+    color: var(--secondary-color);
+    font-weight: bold;
+}
+
+.road-tick.month .tick-label {
+    bottom: -40px;
+    color: var(--primary-color);
+    font-size: 12px;
+}
+
+.road-stats-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-sub);
+    margin-top: 40px;
+    padding: 0 var(--spacing-sm);
+}
+
 /* Road View */
 .road-scroller {
     width: 100vw;
