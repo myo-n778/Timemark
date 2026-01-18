@@ -230,7 +230,7 @@ function renderSettings() {
             </div>
             <div class="exception-list" id="exception-list-container">
                 ${Object.keys(state.customDates).length === 0 ? '<p class="empty-state" style="padding: 10px;">例外日が設定されていません</p>' : ''}
-                ${Object.keys(state.customDates).sort().reverse().map(date => `
+                ${Object.keys(state.customDates).sort().map(date => `
                     <div class="exception-item">
                         <div class="exception-info">
                             <span class="exception-date">${date}</span>
@@ -353,8 +353,21 @@ function renderSettings() {
             if (date) {
                 state.customDates[date] = hours;
                 storage.save();
-                modal.remove();
+
+                // Keep modal open for continuous input, but update background list
                 renderSettings();
+
+                // Show a brief success indicator (button text change)
+                const saveBtn = modal.querySelector('#exc-save');
+                const originalText = saveBtn.innerText;
+                saveBtn.innerText = '追加しました！';
+                saveBtn.disabled = true;
+                setTimeout(() => {
+                    saveBtn.innerText = originalText;
+                    saveBtn.disabled = false;
+                    // Reset date to next day to help quick input? Or just keep same?
+                    // User might want to enter multiple dates close together.
+                }, 800);
             }
         };
     }
