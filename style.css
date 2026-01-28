@@ -861,6 +861,45 @@ main {
     color: var(--text-sub);
 }
 
+.countdown-days {
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--primary-color);
+    line-height: 1;
+}
+
+.countdown-days small {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+.countdown-hours {
+    font-size: 13px;
+    color: var(--text-sub);
+    text-align: right;
+    margin-top: 4px;
+}
+
+.road-countdown-badge {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 4px 12px;
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: bold;
+    color: var(--text-main);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.road-countdown-badge .day-val {
+    color: var(--primary-color);
+    font-size: 18px;
+    text-shadow: 0 0 10px var(--primary-glow);
+}
+
 /* Responsive adjustments for iPad */
 @media (min-width: 768px) {
     main {

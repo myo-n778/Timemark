@@ -6,6 +6,7 @@ const state = {
     currentView: 'list',
     selectedTargetId: null,
     targets: [],
+    holidays: {}, // { 'YYYY-MM-DD': 'Name' }
     exclusionDates: [], // Legacy
     weeklyHours: {
         mon: 4, tue: 4, wed: 4, thu: 4, fri: 4,
@@ -41,6 +42,29 @@ const storage = {
                 parsed.exclusionDates.forEach(d => state.customDates[d] = 0);
             }
         }
+    },
+    loadHolidays: async () => {
+        try {
+            const response = await fetch('syukujitsu.csv');
+            const text = await response.text();
+            const lines = text.split(/\r?\n/);
+            lines.forEach((line, index) => {
+                if (index === 0 || !line.trim()) return;
+                const [dateStr, name] = line.split(',');
+                if (dateStr) {
+                    const parts = dateStr.split('/');
+                    if (parts.length === 3) {
+                        const y = parts[0];
+                        const m = parts[1].padStart(2, '0');
+                        const d = parts[2].padStart(2, '0');
+                        state.holidays[`${y}-${m}-${d}`] = name;
+                    }
+                }
+            });
+            console.log(`Loaded ${Object.keys(state.holidays).length} holidays`);
+        } catch (e) {
+            console.warn('Failed to load holidays:', e);
+        }
     }
 };
 
@@ -72,19 +96,28 @@ const timeUtils = {
     getHoursForDate: (date) => {
         const dateStr = date.toISOString().split('T')[0];
 
-        // 1. 最優先: 個別例外日 (祝日インポート含む)
+        // 1. 最優先: 個別例外日
         if (state.customDates[dateStr] !== undefined) {
             return state.customDates[dateStr];
         }
+
+        // 1.5 祝日判定 (syukujitsu.csv から読み込んだデータ)
+        const isHoliday = !!state.holidays[dateStr];
 
         // 2. 次点: 期間指定の設定 (長期休暇など)
         const period = state.timePeriods.find(p => dateStr >= p.start && dateStr <= p.end);
 
         const dayMap = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-        const dayName = dayMap[date.getDay()];
+        let dayName = dayMap[date.getDay()];
+
+        // 祝日の場合は曜日を 'holiday' とみなす (期間設定内でも祝日設定があればそれを優先するか、後続の weeklyHours で holiday を使う)
+        if (isHoliday) {
+            dayName = 'holiday';
+        }
 
         if (period) {
-            return period.weeklyHours[dayName];
+            // 期間設定内の週設定に 'holiday' がない場合は日曜日の設定を流用する (以前のロジック踏襲)
+            return period.weeklyHours[dayName] !== undefined ? period.weeklyHours[dayName] : period.weeklyHours['sun'];
         }
 
         // 3. デフォルト: 通常の曜日設定
@@ -216,29 +249,28 @@ function renderSettings() {
         <h1 class="glow-text">Settings</h1>
         
         <section class="settings-section">
-            <h2>デフォルトの可処分時間</h2>
-            <div style="margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px;">
-                <div style="display: flex; align-items: center; gap: 4px;">
-                    <span style="font-size: 11px; white-space: nowrap;">平日一括:</span>
-                    <input type="number" id="weekday-bulk-input" value="4" min="0" max="24" step="0.5" style="width: 45px; text-align: center;">
-                    <button class="btn btn-ghost btn-mini" id="weekday-apply-btn">適用</button>
+            <h2>週間稼働時間（デフォルト）</h2>
+            <div class="bulk-apply-row" style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <div style="flex: 1; display: flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 8px;">
+                    <span style="font-size: 11px; color: var(--text-sub)">平日:</span>
+                    <input type="number" id="weekday-bulk-input" value="4" min="0" max="24" step="0.5" style="width: 45px; text-align: center; background: transparent; border: 1px solid var(--border-color); color: white; border-radius: 4px;">
+                    <button class="btn btn-ghost btn-mini" id="weekday-apply-btn" style="padding: 2px 8px;">適用</button>
                 </div>
-                <div style="display: flex; align-items: center; gap: 4px;">
-                    <span style="font-size: 11px; white-space: nowrap;">休日一括:</span>
-                    <input type="number" id="weekend-bulk-input" value="10" min="0" max="24" step="0.5" style="width: 45px; text-align: center;">
-                    <button class="btn btn-primary btn-mini" id="weekend-apply-btn">適用</button>
+                <div style="flex: 1; display: flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 8px;">
+                    <span style="font-size: 11px; color: var(--text-sub)">休日:</span>
+                    <input type="number" id="weekend-bulk-input" value="10" min="0" max="24" step="0.5" style="width: 45px; text-align: center; background: transparent; border: 1px solid var(--border-color); color: white; border-radius: 4px;">
+                    <button class="btn btn-primary btn-mini" id="weekend-apply-btn" style="padding: 2px 8px;">適用</button>
                 </div>
             </div>
-            <div class="settings-group" id="weekly-hours-grid" style="display: flex; flex-wrap: nowrap; gap: 4px; padding: 10px 4px; overflow-x: auto;">
+            <div class="weekly-hours-compact" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
                 ${['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun', 'holiday'].map(day => `
-                    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 40px;">
-                        <label style="font-size: 10px; margin-bottom: 4px; color: var(--text-sub)">${dayLabels[day].charAt(0)}</label>
+                    <div style="display: flex; flex-direction: column; align-items: center; background: rgba(255,255,255,0.03); padding: 6px; border-radius: 6px; border: 1px solid var(--border-color);">
+                        <label style="font-size: 11px; margin-bottom: 4px; color: var(--text-sub)">${dayLabels[day].charAt(0)}</label>
                         <input type="number" class="hour-input" data-day="${day}" value="${state.weeklyHours[day]}" min="0" max="24" step="0.5" 
-                               style="width: 100%; padding: 4px 2px; text-align: center; font-size: 13px; min-height: 32px;">
+                               style="width: 100%; padding: 4px 0; text-align: center; font-size: 13px; background: transparent; border: none; color: white; outline: none;">
                     </div>
                 `).join('')}
             </div>
-            <p style="font-size: 10px; color: var(--text-sub); margin-top: 4px; text-align: center;">通常の曜日ごとの時間（一括適用後に個別調整可）</p>
         </section>
 
         <section class="settings-section">
@@ -673,13 +705,15 @@ function renderList() {
 
         let mainDisplay = '';
         let subDisplay = '';
+        let hoursDisplay = '';
 
         if (target.type === 'event') {
-            mainDisplay = `あと ${calDays}日`;
+            mainDisplay = `<small>あと</small> ${calDays} <small>日</small>`;
             subDisplay = '全日数カウント';
         } else {
             const totalHours = timeUtils.calcTotalHours(today, targetDate);
-            mainDisplay = `あと ${calDays}日 / ${totalHours}h`;
+            mainDisplay = `<small>あと</small> ${calDays} <small>日</small>`;
+            hoursDisplay = `${totalHours}h`;
             subDisplay = `暦日数計 / 総可処分時間`;
         }
 
@@ -699,7 +733,10 @@ function renderList() {
                     </div>
                 </div>
                 <div class="target-status">
-                    <div class="target-countdown glow-text">${mainDisplay}</div>
+                    <div class="target-countdown">
+                        <div class="countdown-days glow-text" style="color: ${target.color}">${mainDisplay}</div>
+                        ${hoursDisplay ? `<div class="countdown-hours">${hoursDisplay}</div>` : ''}
+                    </div>
                 </div>
             </div>
         `;
@@ -792,113 +829,105 @@ function renderRoad() {
         const start = timeUtils.startOfDay(new Date(target.createdAt || Date.now()));
         const end = timeUtils.startOfDay(new Date(target.targetDate));
 
-        // 全期間の計算（今日が含まれるように範囲を調整）
-        const totalRangeStart = new Date(Math.min(start, today));
-        const totalRangeEnd = new Date(Math.max(end, today));
-        const totalRangeDays = timeUtils.calcCalendarDays(totalRangeStart, totalRangeEnd);
-
-        const getX = (date) => {
-            const days = timeUtils.calcCalendarDays(totalRangeStart, date);
-            return (days / totalRangeDays) * 100;
-        };
-
-        const todayX = getX(today);
-        const startX = getX(start);
-        const endX = getX(end);
-
-        // マイルストーンの生成
-        const milestones = [];
+        // Range calculation for 3D view (minimum window)
         const totalDays = timeUtils.calcCalendarDays(start, end);
+        const elapsed = timeUtils.calcCalendarDays(start, today);
 
+        const milestones = [];
         if (totalDays > 0) {
-            // 比例マイルストーン (10%, 25%, 50%, 75%, 90%)
-            [0.1, 0.25, 0.5, 0.75, 0.9].forEach(ratio => {
+            [0.25, 0.5, 0.75].forEach(ratio => {
                 const mDate = new Date(start);
                 mDate.setDate(start.getDate() + Math.round(totalDays * ratio));
-                const remaining = timeUtils.calcCalendarDays(mDate, end);
-                milestones.push({
-                    x: getX(mDate),
-                    label: `${Math.round(ratio * 100)}%`,
-                    dateLabel: `${mDate.getMonth() + 1}/${mDate.getDate()}`,
-                    remaining: remaining,
-                    type: 'ratio'
-                });
+                milestones.push({ date: mDate, label: `${Math.round(ratio * 100)}%` });
             });
-
-            // カウントダウンマイルストーン (残り10日、残り1週間)
-            const d10 = new Date(end); d10.setDate(end.getDate() - 10);
-            if (d10 > start) milestones.push({
-                x: getX(d10),
-                label: '残り10日',
-                dateLabel: `${d10.getMonth() + 1}/${d10.getDate()}`,
-                remaining: 10,
-                type: 'count'
-            });
-
-            const w1 = new Date(end); w1.setDate(end.getDate() - 7);
-            if (w1 > start) milestones.push({
-                x: getX(w1),
-                label: '残り1週',
-                dateLabel: `${w1.getMonth() + 1}/${w1.getDate()}`,
-                remaining: 7,
-                type: 'count'
-            });
-
-            // 月替わり
-            let cur = new Date(totalRangeStart);
-            while (cur <= totalRangeEnd) {
+            // Month edges
+            let cur = new Date(start);
+            while (cur <= end) {
                 if (cur.getDate() === 1) {
-                    const remaining = timeUtils.calcCalendarDays(cur, end);
-                    milestones.push({
-                        x: getX(cur),
-                        label: `${cur.getMonth() + 1}月`,
-                        dateLabel: '1日',
-                        remaining: remaining > 0 ? remaining : null,
-                        type: 'month'
-                    });
+                    milestones.push({ date: new Date(cur), label: `${cur.getMonth() + 1}月`, isMonth: true });
                 }
                 cur.setDate(cur.getDate() + 1);
             }
         }
 
         roadHtml += `
-            <div class="road-item-container">
-                <div class="road-target-name" style="color: ${target.color}">${target.name}</div>
-                <div class="proportional-road">
-                    <div class="road-bar-bg"></div>
-                    <div class="road-progress-fill" style="background: ${target.color}; left: ${startX}%; width: ${todayX - startX}%"></div>
-                    
-                    <!-- Major Points -->
-                    <div class="road-point start" style="left: ${startX}%">
-                        <span class="point-label">開始</span>
-                        <span class="point-date">${start.getMonth() + 1}/${start.getDate()}</span>
-                        <span class="point-rem">あと${totalDays}日</span>
+            <div class="road-item-container" style="margin-bottom: 60px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                    <div class="road-target-name" style="color: ${target.color}; margin-bottom: 0;">${target.name}</div>
+                    <div class="road-countdown-badge">
+                        <span>あと</span>
+                        <span class="day-val" style="color: ${target.color}">${Math.max(0, totalDays - elapsed)}</span>
+                        <span>日</span>
                     </div>
-                    <div class="road-point today" style="left: ${todayX}%"><div class="orb"></div></div>
-                    <div class="road-point end" style="left: ${endX}%" style="border-color: ${target.color}">
-                        <span class="point-label">ゴール</span>
-                        <span class="point-date">${end.getMonth() + 1}/${end.getDate()}</span>
-                    </div>
-
-                    <!-- Milestones -->
-                    ${milestones.map(m => `
-                        <div class="road-tick ${m.type}" style="left: ${m.x}%">
-                            <span class="tick-label">${m.label}</span>
-                            <span class="tick-date">${m.dateLabel}</span>
-                            ${m.remaining !== null ? `<span class="tick-rem">あと${m.remaining}日</span>` : ''}
-                        </div>
-                    `).join('')}
                 </div>
-                <div class="road-stats-row">
-                    <span>開始日: ${start.toLocaleDateString()}</span>
+                
+                <div class="road-scroller">
+                    <div class="road-track">
+                        ${generateRoadDays(start, end, today, milestones, target.color)}
+                    </div>
+                </div>
+
+                <div class="road-stats-row" style="margin-top: 20px;">
+                    <span>開始: ${start.toLocaleDateString()}</span>
                     <span>今日: ${today.toLocaleDateString()}</span>
-                    <span>目標日: ${end.toLocaleDateString()}</span>
+                    <span>目標: ${end.toLocaleDateString()}</span>
+                    <span style="font-weight: bold; color: ${target.color}">あと ${Math.max(0, totalDays - elapsed)} 日</span>
                 </div>
             </div>
         `;
     });
 
     roadContainer.innerHTML = roadHtml;
+
+    // Auto-scroll to today
+    setTimeout(() => {
+        const scrolls = document.querySelectorAll('.road-scroller');
+        scrolls.forEach(scroller => {
+            const todayEl = scroller.querySelector('.is-today');
+            if (todayEl) {
+                const scrollLeft = todayEl.offsetLeft - scroller.clientWidth / 2 + todayEl.clientWidth / 2;
+                scroller.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+            }
+        });
+    }, 100);
+}
+
+function generateRoadDays(start, end, today, milestones, color) {
+    let html = '';
+    let cur = new Date(start);
+    // Add some padding days
+    cur.setDate(cur.getDate() - 2);
+    const stopDate = new Date(end);
+    stopDate.setDate(stopDate.getDate() + 2);
+
+    while (cur <= stopDate) {
+        const isToday = cur.getTime() === today.getTime();
+        const isPast = cur < today;
+        const isEnd = cur.getTime() === end.getTime();
+        const isStart = cur.getTime() === start.getTime();
+        const milestone = milestones.find(m => m.date.getTime() === cur.getTime());
+
+        const dayClasses = ['road-day'];
+        if (isToday) dayClasses.push('is-today');
+        if (isPast) dayClasses.push('is-past');
+        if (cur.getDate() === 1) dayClasses.push('month-edge');
+
+        html += `
+            <div class="${dayClasses.join(' ')}" data-date="${cur.toISOString().split('T')[0]}">
+                ${milestone ? `<div class="milestone-tag ${milestone.isMonth ? 'month' : ''}">${milestone.label}</div>` : ''}
+                <div class="day-label">${cur.getDate()}</div>
+                <div class="road-container">
+                    <div class="road-bar" style="${isToday ? `background: ${color}; opacity: 0.8; box-shadow: 0 0 20px ${color}` : ''}">
+                        ${isToday ? '<div class="today-orb"></div>' : ''}
+                        ${isEnd ? '<div class="goal-flag">GOAL</div>' : ''}
+                        ${isStart ? '<div class="start-flag">START</div>' : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+        cur.setDate(cur.getDate() + 1);
+    }
+    return html;
 }
 
 function showAddTargetModal() {
@@ -1021,8 +1050,9 @@ window.switchView = switchView;
 window.showAddTargetModal = showAddTargetModal;
 
 // --- Initialization ---
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     storage.load();
+    await storage.loadHolidays();
     initStars();
 
     // Setup Navigation
