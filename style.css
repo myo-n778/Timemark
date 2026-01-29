@@ -720,8 +720,8 @@ main {
 }
 
 .road-item-container {
-    margin-bottom: 60px;
-    /* 余白を調整 */
+    margin-bottom: 20px;
+    /* 余白を大幅に削減 (60px -> 20px) */
     padding: 0 40px;
     /* 左右に見切れ防止の大きなパディングを追加 */
 }
@@ -820,8 +820,8 @@ main {
 
 .marker-today .marker-label {
     position: absolute;
-    top: 65px;
-    /* 道の下側（棒人間から離す） */
+    top: 32px;
+    /* 道の台形シャドウのすぐ下に配置 (65px -> 32px) */
     color: var(--primary-color);
     font-size: 11px;
     z-index: 21;
@@ -830,8 +830,8 @@ main {
 /* ラベル内の追加情報（あと何日）：TODAY用 */
 .marker-today .marker-remaining {
     position: absolute;
-    top: 78px;
-    /* ラベルのさらに下 */
+    top: 45px;
+    /* ラベルのすぐ下 (78px -> 45px) */
     font-size: 8px;
     color: var(--secondary-color);
     font-weight: bold;
@@ -1001,7 +1001,13 @@ main {
     white-space: nowrap;
     line-height: 1.2;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    /* 要素間の隙間を確保 */
 }
+
 
 .tick-percent {
     font-weight: bold;

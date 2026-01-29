@@ -860,6 +860,7 @@ function renderRoad() {
                     </div>
                 </div>
             `;
+
         }).join('');
 
         const stickmanHtml = `
