@@ -841,13 +841,30 @@ function renderRoad() {
 
         const todayPos = getPos(today);
 
+        // 目盛り（Tick）の生成ロジック
+        const ticks = [0, 25, 50, 75, 100];
+        const ticksHtml = ticks.map(percent => {
+            const date = new Date(start);
+            date.setDate(start.getDate() + Math.round((totalDays * percent) / 100));
+            const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+            return `
+                <div class="road-tick" style="left: ${percent}%;">
+                    <div class="tick-line"></div>
+                    <div class="tick-label">
+                        <div class="tick-percent">${percent}%</div>
+                        <div class="tick-date">${dateStr}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
         roadHtml += `
             <div class="road-item-container">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
                     <div class="road-target-name" style="color: ${target.color}">${target.name}</div>
                     <div class="road-countdown-badge">
                         <span>あと</span>
-                        <span style="color: ${target.color}; font-size: 1.2rem; margin: 0 4px;">${remaining}</span>
+                        <span style="color: ${target.color}; font-size: 1.1rem; margin: 0 4px;">${remaining}</span>
                         <span>日</span>
                     </div>
                 </div>
@@ -856,35 +873,31 @@ function renderRoad() {
                     <div class="road-container">
                         <div class="road-bar"></div>
                         
+                        <!-- 目盛り -->
+                        ${ticksHtml}
+
                         <!-- 開始点 -->
                         <div class="road-marker" style="left: 0%;">
                             <div class="marker-label">START</div>
                             <div class="marker-dot"></div>
-                            <div class="marker-date">${start.getMonth() + 1}/${start.getDate()}</div>
                         </div>
 
                         <!-- 今日 -->
                         <div class="road-marker marker-today" style="left: ${todayPos}%;">
                             <div class="marker-label">TODAY</div>
                             <div class="marker-dot" style="background: ${target.color}; box-shadow: 0 0 15px ${target.color}"></div>
-                            <div class="marker-date">${today.getMonth() + 1}/${today.getDate()}</div>
                         </div>
 
                         <!-- 目標日 -->
                         <div class="road-marker" style="left: 100%;">
                             <div class="marker-label">GOAL</div>
                             <div class="marker-dot"></div>
-                            <div class="marker-date">${end.getMonth() + 1}/${end.getDate()}</div>
                         </div>
                     </div>
                 </div>
-
-                <div class="road-stats-row">
-                    <span>開始: ${start.toLocaleDateString()}</span>
-                    <span>目標: ${end.toLocaleDateString()}</span>
-                </div>
             </div>
         `;
+
     });
 
     roadContainer.innerHTML = roadHtml;
