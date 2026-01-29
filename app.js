@@ -822,113 +822,74 @@ function renderRoad() {
     }
 
     const today = timeUtils.startOfDay(new Date());
-
     let roadHtml = '<h1 class="glow-text">Time Road</h1>';
 
     state.targets.forEach(target => {
         const start = timeUtils.startOfDay(new Date(target.createdAt || Date.now()));
         const end = timeUtils.startOfDay(new Date(target.targetDate));
 
-        // Range calculation for 3D view (minimum window)
         const totalDays = timeUtils.calcCalendarDays(start, end);
         const elapsed = timeUtils.calcCalendarDays(start, today);
+        const remaining = Math.max(0, totalDays - elapsed);
 
-        const milestones = [];
-        if (totalDays > 0) {
-            [0.25, 0.5, 0.75].forEach(ratio => {
-                const mDate = new Date(start);
-                mDate.setDate(start.getDate() + Math.round(totalDays * ratio));
-                milestones.push({ date: mDate, label: `${Math.round(ratio * 100)}%` });
-            });
-            // Month edges
-            let cur = new Date(start);
-            while (cur <= end) {
-                if (cur.getDate() === 1) {
-                    milestones.push({ date: new Date(cur), label: `${cur.getMonth() + 1}月`, isMonth: true });
-                }
-                cur.setDate(cur.getDate() + 1);
-            }
-        }
+        // 比率計算関数 (0% to 100%)
+        const getPos = (date) => {
+            if (totalDays <= 0) return 50; // 当日のみの場合は中央
+            const d = timeUtils.calcCalendarDays(start, date);
+            return Math.min(100, Math.max(0, (d / totalDays) * 100));
+        };
+
+        const todayPos = getPos(today);
 
         roadHtml += `
-            <div class="road-item-container" style="margin-bottom: 60px;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
-                    <div class="road-target-name" style="color: ${target.color}; margin-bottom: 0;">${target.name}</div>
+            <div class="road-item-container">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                    <div class="road-target-name" style="color: ${target.color}">${target.name}</div>
                     <div class="road-countdown-badge">
                         <span>あと</span>
-                        <span class="day-val" style="color: ${target.color}">${Math.max(0, totalDays - elapsed)}</span>
+                        <span style="color: ${target.color}; font-size: 1.2rem; margin: 0 4px;">${remaining}</span>
                         <span>日</span>
                     </div>
                 </div>
                 
                 <div class="road-scroller">
-                    <div class="road-track">
-                        ${generateRoadDays(start, end, today, milestones, target.color)}
+                    <div class="road-container">
+                        <div class="road-bar"></div>
+                        
+                        <!-- 開始点 -->
+                        <div class="road-marker" style="left: 0%;">
+                            <div class="marker-label">START</div>
+                            <div class="marker-dot"></div>
+                            <div class="marker-date">${start.getMonth() + 1}/${start.getDate()}</div>
+                        </div>
+
+                        <!-- 今日 -->
+                        <div class="road-marker marker-today" style="left: ${todayPos}%;">
+                            <div class="marker-label">TODAY</div>
+                            <div class="marker-dot" style="background: ${target.color}; box-shadow: 0 0 15px ${target.color}"></div>
+                            <div class="marker-date">${today.getMonth() + 1}/${today.getDate()}</div>
+                        </div>
+
+                        <!-- 目標日 -->
+                        <div class="road-marker" style="left: 100%;">
+                            <div class="marker-label">GOAL</div>
+                            <div class="marker-dot"></div>
+                            <div class="marker-date">${end.getMonth() + 1}/${end.getDate()}</div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="road-stats-row" style="margin-top: 20px;">
+                <div class="road-stats-row">
                     <span>開始: ${start.toLocaleDateString()}</span>
-                    <span>今日: ${today.toLocaleDateString()}</span>
                     <span>目標: ${end.toLocaleDateString()}</span>
-                    <span style="font-weight: bold; color: ${target.color}">あと ${Math.max(0, totalDays - elapsed)} 日</span>
                 </div>
             </div>
         `;
     });
 
     roadContainer.innerHTML = roadHtml;
-
-    // Auto-scroll to today
-    setTimeout(() => {
-        const scrolls = document.querySelectorAll('.road-scroller');
-        scrolls.forEach(scroller => {
-            const todayEl = scroller.querySelector('.is-today');
-            if (todayEl) {
-                const scrollLeft = todayEl.offsetLeft - scroller.clientWidth / 2 + todayEl.clientWidth / 2;
-                scroller.scrollTo({ left: scrollLeft, behavior: 'smooth' });
-            }
-        });
-    }, 100);
 }
 
-function generateRoadDays(start, end, today, milestones, color) {
-    let html = '';
-    let cur = new Date(start);
-    // Add some padding days
-    cur.setDate(cur.getDate() - 2);
-    const stopDate = new Date(end);
-    stopDate.setDate(stopDate.getDate() + 2);
-
-    while (cur <= stopDate) {
-        const isToday = cur.getTime() === today.getTime();
-        const isPast = cur < today;
-        const isEnd = cur.getTime() === end.getTime();
-        const isStart = cur.getTime() === start.getTime();
-        const milestone = milestones.find(m => m.date.getTime() === cur.getTime());
-
-        const dayClasses = ['road-day'];
-        if (isToday) dayClasses.push('is-today');
-        if (isPast) dayClasses.push('is-past');
-        if (cur.getDate() === 1) dayClasses.push('month-edge');
-
-        html += `
-            <div class="${dayClasses.join(' ')}" data-date="${cur.toISOString().split('T')[0]}">
-                ${milestone ? `<div class="milestone-tag ${milestone.isMonth ? 'month' : ''}">${milestone.label}</div>` : ''}
-                <div class="day-label">${cur.getDate()}</div>
-                <div class="road-container">
-                    <div class="road-bar" style="${isToday ? `background: ${color}; opacity: 0.8; box-shadow: 0 0 20px ${color}` : ''}">
-                        ${isToday ? '<div class="today-orb"></div>' : ''}
-                        ${isEnd ? '<div class="goal-flag">GOAL</div>' : ''}
-                        ${isStart ? '<div class="start-flag">START</div>' : ''}
-                    </div>
-                </div>
-            </div>
-        `;
-        cur.setDate(cur.getDate() + 1);
-    }
-    return html;
-}
 
 function showAddTargetModal() {
     const modal = document.createElement('div');
