@@ -900,9 +900,8 @@ function renderRoad() {
 
                         <!-- 今日 -->
                         <div class="road-marker marker-today" style="left: ${todayPos}%;">
-                            <div class="marker-label">TODAY</div>
-                            <div class="marker-dot"></div>
                             ${stickmanHtml}
+                            <div class="marker-label">TODAY</div>
                             <div class="marker-remaining">あと${remaining}日</div>
                         </div>
 
@@ -916,6 +915,7 @@ function renderRoad() {
                 </div>
             </div>
         `;
+
 
 
     });

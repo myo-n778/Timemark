@@ -819,9 +819,24 @@ main {
 }
 
 .marker-today .marker-label {
+    position: absolute;
+    top: 65px;
+    /* 道の下側（棒人間から離す） */
     color: var(--primary-color);
     font-size: 11px;
+    z-index: 21;
 }
+
+/* ラベル内の追加情報（あと何日）：TODAY用 */
+.marker-today .marker-remaining {
+    position: absolute;
+    top: 78px;
+    /* ラベルのさらに下 */
+    font-size: 8px;
+    color: var(--secondary-color);
+    font-weight: bold;
+}
+
 
 /* 棒人間（Stickman）のスタイル */
 .stickman {
@@ -953,13 +968,14 @@ main {
     }
 }
 
-/* ラベル内の追加情報（あと何日） */
+/* ラベル内の追加情報（あと何日）：共通 */
 .marker-remaining {
     font-size: 8px;
     color: var(--secondary-color);
     font-weight: bold;
-    margin-top: 1px;
+    margin-top: 2px;
 }
+
 
 /* 軸ラベル（Tick）スタイル */
 .road-tick {
