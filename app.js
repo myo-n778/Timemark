@@ -842,21 +842,36 @@ function renderRoad() {
         const todayPos = getPos(today);
 
         // 目盛り（Tick）の生成ロジック
-        const ticks = [0, 25, 50, 75, 100];
+        const ticks = [25, 50, 75]; // 0%と100%はマーカーと被るので除外
         const ticksHtml = ticks.map(percent => {
             const date = new Date(start);
             date.setDate(start.getDate() + Math.round((totalDays * percent) / 100));
             const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+            const remDays = Math.max(0, totalDays - Math.round((totalDays * percent) / 100) - elapsed);
+            const relativeRem = Math.max(0, Math.round((totalDays * (100 - percent)) / 100));
+
             return `
                 <div class="road-tick" style="left: ${percent}%;">
                     <div class="tick-line"></div>
                     <div class="tick-label">
                         <div class="tick-percent">${percent}%</div>
                         <div class="tick-date">${dateStr}</div>
+                        <div class="marker-remaining">あと${relativeRem}日</div>
                     </div>
                 </div>
             `;
         }).join('');
+
+        const stickmanHtml = `
+            <div class="stickman">
+                <div class="stickman-head"></div>
+                <div class="stickman-body"></div>
+                <div class="stickman-arm arm-left"></div>
+                <div class="stickman-arm arm-right"></div>
+                <div class="stickman-leg leg-left"></div>
+                <div class="stickman-leg leg-right"></div>
+            </div>
+        `;
 
         roadHtml += `
             <div class="road-item-container">
@@ -880,23 +895,28 @@ function renderRoad() {
                         <div class="road-marker" style="left: 0%;">
                             <div class="marker-label">START</div>
                             <div class="marker-dot"></div>
+                            <div class="marker-date">${start.getMonth() + 1}/${start.getDate()}</div>
                         </div>
 
                         <!-- 今日 -->
                         <div class="road-marker marker-today" style="left: ${todayPos}%;">
                             <div class="marker-label">TODAY</div>
-                            <div class="marker-dot" style="background: ${target.color}; box-shadow: 0 0 15px ${target.color}"></div>
+                            <div class="marker-dot"></div>
+                            ${stickmanHtml}
+                            <div class="marker-remaining">あと${remaining}日</div>
                         </div>
 
                         <!-- 目標日 -->
                         <div class="road-marker" style="left: 100%;">
                             <div class="marker-label">GOAL</div>
                             <div class="marker-dot"></div>
+                            <div class="marker-date">${end.getMonth() + 1}/${end.getDate()}</div>
                         </div>
                     </div>
                 </div>
             </div>
         `;
+
 
     });
 

@@ -708,9 +708,10 @@ main {
 .road-scroller {
     width: 100%;
     overflow: visible;
-    padding: 10px 0 40px;
-    /* 縦余白を縮小 */
+    padding: 10px 0 50px;
+    /* 余白を微増 */
 }
+
 
 .road-track {
     display: block;
@@ -719,10 +720,12 @@ main {
 }
 
 .road-item-container {
-    margin-bottom: 50px;
-    /* 縦の間隔を縮小 */
-    padding: 0 10px;
+    margin-bottom: 60px;
+    /* 余白を調整 */
+    padding: 0 40px;
+    /* 左右に見切れ防止の大きなパディングを追加 */
 }
+
 
 
 .road-container {
@@ -744,14 +747,17 @@ main {
     background: linear-gradient(180deg,
             rgba(255, 255, 255, 0.05) 0%,
             rgba(255, 255, 255, 0.15) 50%,
-            rgba(255, 255, 255, 0.05) 100%);
+            rgba(255, 255, 255, 0.12) 100%);
+    /* 少し明るく */
     position: absolute;
     bottom: 0;
     transform: rotateX(60deg);
     transform-origin: bottom;
-    clip-path: polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%);
+    clip-path: polygon(10% 0%, 90% 0%, 100% 100%, 0% 100%);
+    /* 幅を調整 */
     border-bottom: 2px solid rgba(255, 255, 255, 0.2);
 }
+
 
 .road-target-name {
     font-size: 1.2rem;
@@ -808,15 +814,151 @@ main {
 }
 
 .marker-today .marker-dot {
-    width: 14px;
-    height: 14px;
-    background: var(--primary-color);
-    box-shadow: 0 0 15px var(--primary-color);
+    display: none;
+    /* ドットの代わりに棒人間を表示 */
 }
 
 .marker-today .marker-label {
     color: var(--primary-color);
-    font-size: 12px;
+    font-size: 11px;
+}
+
+/* 棒人間（Stickman）のスタイル */
+.stickman {
+    position: relative;
+    width: 20px;
+    height: 35px;
+    margin-top: -35px;
+    /* 道の上に立たせる */
+    transform-origin: bottom center;
+    animation: walk 1s infinite ease-in-out;
+}
+
+.stickman-head {
+    width: 8px;
+    height: 8px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    position: absolute;
+    top: 0;
+    left: 6px;
+    box-shadow: 0 0 10px var(--primary-glow);
+}
+
+.stickman-body {
+    width: 2px;
+    height: 12px;
+    background: var(--primary-color);
+    position: absolute;
+    top: 8px;
+    left: 9px;
+}
+
+.stickman-arm {
+    width: 8px;
+    height: 2px;
+    background: var(--primary-color);
+    position: absolute;
+    top: 10px;
+}
+
+.arm-left {
+    left: 1px;
+    transform-origin: right center;
+    animation: arm-swing-l 1s infinite ease-in-out;
+}
+
+.arm-right {
+    right: 1px;
+    transform-origin: left center;
+    animation: arm-swing-r 1s infinite ease-in-out;
+}
+
+.stickman-leg {
+    width: 2px;
+    height: 12px;
+    background: var(--primary-color);
+    position: absolute;
+    top: 20px;
+    transform-origin: top center;
+}
+
+.leg-left {
+    left: 9px;
+    animation: leg-swing-l 1s infinite ease-in-out;
+}
+
+.leg-right {
+    left: 9px;
+    animation: leg-swing-r 1s infinite ease-in-out;
+}
+
+@keyframes walk {
+
+    0%,
+    100% {
+        transform: translateY(0) rotate(0);
+    }
+
+    50% {
+        transform: translateY(-3px) rotate(2deg);
+    }
+}
+
+@keyframes leg-swing-l {
+
+    0%,
+    100% {
+        transform: rotate(20deg);
+    }
+
+    50% {
+        transform: rotate(-20deg);
+    }
+}
+
+@keyframes leg-swing-r {
+
+    0%,
+    100% {
+        transform: rotate(-20deg);
+    }
+
+    50% {
+        transform: rotate(20deg);
+    }
+}
+
+@keyframes arm-swing-l {
+
+    0%,
+    100% {
+        transform: rotate(-30deg);
+    }
+
+    50% {
+        transform: rotate(30deg);
+    }
+}
+
+@keyframes arm-swing-r {
+
+    0%,
+    100% {
+        transform: rotate(30deg);
+    }
+
+    50% {
+        transform: rotate(-30deg);
+    }
+}
+
+/* ラベル内の追加情報（あと何日） */
+.marker-remaining {
+    font-size: 8px;
+    color: var(--secondary-color);
+    font-weight: bold;
+    margin-top: 1px;
 }
 
 /* 軸ラベル（Tick）スタイル */
