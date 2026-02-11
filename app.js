@@ -974,9 +974,23 @@ function renderList() {
 
 function setupDragging(container) {
     let draggingItem = null;
+    const LONG_PRESS_MS = 550;
 
     container.querySelectorAll('.target-item').forEach(item => {
+        let longPressTimer = null;
+        let longPressTriggered = false;
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        const clearLongPressTimer = () => {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        };
+
         item.addEventListener('dragstart', (e) => {
+            clearLongPressTimer();
             draggingItem = item;
             item.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
@@ -1011,8 +1025,44 @@ function setupDragging(container) {
             }
         });
 
+        item.addEventListener('contextmenu', (e) => {
+            if (e.target.closest('.drag-handle')) return;
+            e.preventDefault();
+            showEditTargetModal(item.dataset.id);
+        });
+
+        item.addEventListener('touchstart', (e) => {
+            if (e.target.closest('.drag-handle')) return;
+            if (!e.touches || e.touches.length !== 1) return;
+            longPressTriggered = false;
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            clearLongPressTimer();
+            longPressTimer = setTimeout(() => {
+                longPressTriggered = true;
+                showEditTargetModal(item.dataset.id);
+            }, LONG_PRESS_MS);
+        }, { passive: true });
+
+        item.addEventListener('touchmove', (e) => {
+            if (!e.touches || e.touches.length !== 1) return;
+            const dx = Math.abs(e.touches[0].clientX - touchStartX);
+            const dy = Math.abs(e.touches[0].clientY - touchStartY);
+            if (dx > 8 || dy > 8) {
+                clearLongPressTimer();
+            }
+        }, { passive: true });
+
+        item.addEventListener('touchend', clearLongPressTimer, { passive: true });
+        item.addEventListener('touchcancel', clearLongPressTimer, { passive: true });
+
         // Handle item click (only if not dragging)
         item.addEventListener('click', (e) => {
+            if (longPressTriggered) {
+                longPressTriggered = false;
+                e.preventDefault();
+                return;
+            }
             if (item.classList.contains('dragging')) return;
             // If clicked on drag handle, don't trigger detail view? 
             // Actually, for better UX, clicking anywhere BUT the handle can still work, 
@@ -1023,6 +1073,98 @@ function setupDragging(container) {
             switchView('detail');
         });
     });
+}
+
+function showEditTargetModal(targetId) {
+    const target = state.targets.find(t => t.id === targetId);
+    if (!target) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <h2 class="modal-title">ターゲット編集</h2>
+            <div class="form-group">
+                <label>種別</label>
+                <div class="type-selector">
+                    <label class="type-option">
+                        <input type="radio" name="edit-target-type" value="study" ${target.type === 'study' ? 'checked' : ''}>
+                        <span>勉強・仕事<br><small>（時間管理あり）</small></span>
+                    </label>
+                    <label class="type-option">
+                        <input type="radio" name="edit-target-type" value="event" ${target.type === 'event' ? 'checked' : ''}>
+                        <span>イベント<br><small>（日数のみ）</small></span>
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>ターゲット名（目的）</label>
+                <input type="text" id="edit-target-name" placeholder="例: 英検準1級、定期テスト">
+            </div>
+            <div class="form-group">
+                <label>開始日</label>
+                <input type="date" id="edit-target-start-date">
+            </div>
+            <div class="form-group">
+                <label>締切日（目標日）</label>
+                <input type="date" id="edit-target-date">
+            </div>
+            <div class="form-group">
+                <label>カラー</label>
+                <select id="edit-target-color">
+                    <option value="#ff8c00">オレンジ</option>
+                    <option value="#00e676">ミントグリーン</option>
+                    <option value="#2196f3">ブルー</option>
+                    <option value="#ff4b4b">レッド</option>
+                    <option value="#9c27b0">パープル</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" id="edit-modal-cancel">キャンセル</button>
+                <button class="btn btn-primary" id="edit-modal-save">更新</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const startDate = target.startDate || toLocalDateString(new Date(target.createdAt || Date.now()));
+    modal.querySelector('#edit-target-name').value = target.name || '';
+    modal.querySelector('#edit-target-start-date').value = startDate;
+    modal.querySelector('#edit-target-date').value = target.targetDate || startDate;
+    modal.querySelector('#edit-target-color').value = target.color || '#ff8c00';
+
+    modal.querySelector('#edit-modal-cancel').onclick = () => modal.remove();
+    modal.querySelector('#edit-modal-save').onclick = () => {
+        const nextType = modal.querySelector('input[name="edit-target-type"]:checked').value;
+        const name = modal.querySelector('#edit-target-name').value.trim();
+        const startDateVal = modal.querySelector('#edit-target-start-date').value;
+        const targetDateVal = modal.querySelector('#edit-target-date').value;
+        const color = modal.querySelector('#edit-target-color').value;
+
+        if (!name || !startDateVal || !targetDateVal) {
+            alert('名前・開始日・締切日を入力してください');
+            return;
+        }
+
+        if (startDateVal > targetDateVal) {
+            alert('開始日は締切日以前にしてください');
+            return;
+        }
+
+        target.type = nextType;
+        target.name = name;
+        target.startDate = startDateVal;
+        target.targetDate = targetDateVal;
+        target.color = color;
+
+        if (nextType === 'study' && (!Array.isArray(target.tasks) || target.tasks.length === 0)) {
+            target.tasks = [{ id: crypto.randomUUID(), title: '基本学習', weight: 1 }];
+        }
+
+        storage.save();
+        modal.remove();
+        renderList();
+    };
 }
 
 function getDragAfterElement(container, y) {
