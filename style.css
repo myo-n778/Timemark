@@ -785,15 +785,16 @@ main {
 }
 
 .marker-label {
-    font-size: 10px;
-    font-weight: bold;
-    color: var(--text-sub);
+    font-size: 12px;
+    font-weight: 800;
+    color: #ffffff;
     margin-bottom: 2px;
     white-space: nowrap;
+    text-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
 }
 
 .road-marker:not(.marker-today) .marker-label {
-    margin-bottom: 8px;
+    margin-bottom: 12px;
 }
 
 .marker-dot {
@@ -805,10 +806,12 @@ main {
 }
 
 .marker-date {
-    font-size: 9px;
-    color: var(--text-sub);
+    font-size: 11px;
+    color: #ffffff;
+    font-weight: 700;
     margin-top: 2px;
     white-space: nowrap;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
 }
 
 
@@ -1000,8 +1003,9 @@ main {
 }
 
 .tick-label {
-    font-size: 9px;
-    color: var(--text-sub);
+    font-size: 10px;
+    color: #ffffff;
+    font-weight: 700;
     white-space: nowrap;
     line-height: 1.2;
     text-align: center;
@@ -1029,9 +1033,9 @@ main {
 }
 
 .road-tick .tick-date {
-    font-size: 9px;
-    color: var(--text-sub);
-    opacity: 0.9;
+    font-size: 10px;
+    color: #ffffff;
+    opacity: 1;
 }
 
 .road-tick .marker-remaining {
@@ -1041,8 +1045,9 @@ main {
 
 
 .tick-percent {
-    font-weight: bold;
-    color: rgba(255, 255, 255, 0.6);
+    font-size: 11px;
+    font-weight: 800;
+    color: #ffffff;
 }
 
 
