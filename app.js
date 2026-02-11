@@ -68,6 +68,86 @@ const storage = {
     }
 };
 
+const backupUtils = {
+    collectBaseDates: () => {
+        const baseDates = {};
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (!key || !key.startsWith('base_date_')) continue;
+            const targetId = key.slice('base_date_'.length);
+            if (!targetId) continue;
+            baseDates[targetId] = localStorage.getItem(key);
+        }
+        return baseDates;
+    },
+
+    createBackup: () => {
+        const snapshot = {
+            targets: state.targets,
+            weeklyHours: state.weeklyHours,
+            customDates: state.customDates,
+            timePeriods: state.timePeriods
+        };
+
+        return {
+            app: 'TimeMark',
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            data: JSON.parse(JSON.stringify(snapshot)),
+            baseDates: backupUtils.collectBaseDates()
+        };
+    },
+
+    downloadBackup: () => {
+        const backup = backupUtils.createBackup();
+        const json = JSON.stringify(backup, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `timemark-backup-${ts}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    },
+
+    applyBackup: (raw) => {
+        if (!raw || typeof raw !== 'object') {
+            throw new Error('バックアップ形式が不正です');
+        }
+
+        const payload = raw.data && typeof raw.data === 'object' ? raw.data : raw;
+        if (!Array.isArray(payload.targets) || !payload.weeklyHours || typeof payload.weeklyHours !== 'object') {
+            throw new Error('必要なデータが見つかりませんでした');
+        }
+
+        state.targets = payload.targets;
+        state.weeklyHours = { ...state.weeklyHours, ...payload.weeklyHours };
+        state.customDates = payload.customDates && typeof payload.customDates === 'object' ? payload.customDates : {};
+        state.timePeriods = Array.isArray(payload.timePeriods) ? payload.timePeriods : [];
+        storage.save();
+
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('base_date_')) {
+                keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+
+        if (raw.baseDates && typeof raw.baseDates === 'object') {
+            Object.entries(raw.baseDates).forEach(([targetId, date]) => {
+                if (typeof date === 'string' && targetId) {
+                    localStorage.setItem(`base_date_${targetId}`, date);
+                }
+            });
+        }
+    }
+};
+
 // --- Utils: Time Calculation ---
 const timeUtils = {
     /**
@@ -294,8 +374,24 @@ function renderSettings() {
 
         <section class="settings-section">
             <div class="task-section-header">
+                <h2>データ移行（端末間）</h2>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-ghost btn-sm" id="export-backup-btn">📤 エクスポート</button>
+                    <button class="btn btn-primary btn-sm" id="import-backup-btn">📥 インポート</button>
+                </div>
+                <input type="file" id="backup-file-input" style="display: none;" accept=".json,application/json">
+            </div>
+            <p style="margin: 8px 0 0; color: var(--text-sub); font-size: 12px;">
+                すべてのターゲット設定・例外日・期間設定・基準日を JSON で移行できます。
+            </p>
+        </section>
+
+        <section class="settings-section">
+            <div class="task-section-header">
                 <h2>例外日（個別の予定）</h2>
                 <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-ghost btn-sm" id="export-csv-btn">📤 CSV</button>
+                    <button class="btn btn-ghost btn-sm" id="export-ics-btn">📤 ICS</button>
                     <button class="btn btn-ghost btn-sm" id="import-file-btn">📥 インポート</button>
                     <button class="btn btn-primary btn-sm" id="add-exception-btn">+ 追加</button>
                 </div>
@@ -345,8 +441,45 @@ function renderSettings() {
         storage.save();
     };
 
+    container.querySelector('#export-backup-btn').onclick = () => {
+        backupUtils.downloadBackup();
+    };
+
+    container.querySelector('#import-backup-btn').onclick = () => {
+        container.querySelector('#backup-file-input').click();
+    };
+
+    container.querySelector('#backup-file-input').onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const parsed = JSON.parse(event.target.result);
+                backupUtils.applyBackup(parsed);
+                switchView('list');
+                renderSettings();
+                alert('バックアップのインポートが完了しました');
+            } catch (err) {
+                alert(`インポートに失敗しました: ${err.message}`);
+            } finally {
+                e.target.value = '';
+            }
+        };
+        reader.readAsText(file);
+    };
+
     container.querySelector('#import-file-btn').onclick = () => {
         container.querySelector('#settings-file-input').click();
+    };
+
+    container.querySelector('#export-csv-btn').onclick = () => {
+        exportCSV();
+    };
+
+    container.querySelector('#export-ics-btn').onclick = () => {
+        exportICS();
     };
 
     container.querySelector('#settings-file-input').onchange = (e) => {
@@ -356,14 +489,19 @@ function renderSettings() {
         const reader = new FileReader();
         reader.onload = (event) => {
             const content = event.target.result;
-            if (file.name.endsWith('.ics')) {
+            const lowerName = file.name.toLowerCase();
+            if (lowerName.endsWith('.ics')) {
                 parseICS(content);
-            } else if (file.name.endsWith('.csv')) {
+            } else if (lowerName.endsWith('.csv')) {
                 parseCSV(content);
+            } else {
+                alert('対応している形式は .ics / .csv です');
+                return;
             }
             storage.save();
             renderSettings();
             alert('インポートが完了しました');
+            e.target.value = '';
         };
         reader.readAsText(file);
     };
@@ -517,24 +655,70 @@ function renderSettings() {
         console.log(`Imported ${count} entries from CSV`);
     }
 
-    container.querySelector('#import-file-btn').onclick = () => {
-        container.querySelector('#settings-file-input').click();
-    };
+    function downloadTextFile(filename, content, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
 
-    container.querySelector('#settings-file-input').onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const content = event.target.result;
-            if (file.name.endsWith('.ics')) parseICS(content);
-            else if (file.name.endsWith('.csv')) parseCSV(content);
-            storage.save();
-            renderSettings();
-            alert('インポートが完了しました');
-        };
-        reader.readAsText(file);
-    };
+    function exportCSV() {
+        const dates = Object.keys(state.customDates).sort();
+        if (dates.length === 0) {
+            alert('エクスポートする例外日がありません');
+            return;
+        }
+
+        const lines = ['date,hours'];
+        dates.forEach(date => {
+            lines.push(`${date},${state.customDates[date]}`);
+        });
+
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        downloadTextFile(`timemark-exceptions-${ts}.csv`, lines.join('\n'), 'text/csv;charset=utf-8');
+    }
+
+    function exportICS() {
+        const dates = Object.keys(state.customDates).sort();
+        if (dates.length === 0) {
+            alert('エクスポートする例外日がありません');
+            return;
+        }
+
+        const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+        const lines = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'PRODID:-//TimeMark//ExceptionDates//JA',
+            'CALSCALE:GREGORIAN',
+            'METHOD:PUBLISH'
+        ];
+
+        dates.forEach((date, idx) => {
+            const dt = date.replace(/-/g, '');
+            const next = new Date(`${date}T00:00:00`);
+            next.setDate(next.getDate() + 1);
+            const nextStr = next.toISOString().split('T')[0].replace(/-/g, '');
+            const hours = state.customDates[date];
+            lines.push('BEGIN:VEVENT');
+            lines.push(`UID:timemark-${dt}-${idx}@local`);
+            lines.push(`DTSTAMP:${now}`);
+            lines.push(`DTSTART;VALUE=DATE:${dt}`);
+            lines.push(`DTEND;VALUE=DATE:${nextStr}`);
+            lines.push(`SUMMARY:TimeMark例外日 (${hours}時間)`);
+            lines.push('END:VEVENT');
+        });
+
+        lines.push('END:VCALENDAR');
+
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        downloadTextFile(`timemark-exceptions-${ts}.ics`, lines.join('\r\n'), 'text/calendar;charset=utf-8');
+    }
 
     container.querySelector('#add-exception-btn').onclick = () => {
         showAddExceptionModal();
