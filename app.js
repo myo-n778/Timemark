@@ -16,7 +16,30 @@ const state = {
     timePeriods: [] // [ { id, name, start, end, weeklyHours: {...} } ]
 };
 // target structure example:
-// { id, name, targetDate, color, type: 'study'|'event', tasks: [], createdAt }
+// { id, name, startDate, targetDate, color, type: 'study'|'event', tasks: [], createdAt }
+
+function toLocalDateString(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function normalizeTarget(target) {
+    const t = target || {};
+    const hasStartDate = typeof t.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.startDate);
+    if (hasStartDate) return t;
+
+    let startDate = toLocalDateString(new Date());
+    if (t.createdAt) {
+        const created = new Date(t.createdAt);
+        if (!isNaN(created)) {
+            startDate = toLocalDateString(created);
+        }
+    }
+
+    return { ...t, startDate };
+}
 
 // --- Storage ---
 const storage = {
@@ -32,7 +55,7 @@ const storage = {
         const data = localStorage.getItem('timemark_data');
         if (data) {
             const parsed = JSON.parse(data);
-            state.targets = parsed.targets || [];
+            state.targets = (parsed.targets || []).map(normalizeTarget);
             state.weeklyHours = parsed.weeklyHours || state.weeklyHours;
             state.customDates = parsed.customDates || {};
             state.timePeriods = parsed.timePeriods || [];
@@ -124,6 +147,7 @@ const backupUtils = {
         }
 
         state.targets = payload.targets;
+        state.targets = state.targets.map(normalizeTarget);
         state.weeklyHours = { ...state.weeklyHours, ...payload.weeklyHours };
         state.customDates = payload.customDates && typeof payload.customDates === 'object' ? payload.customDates : {};
         state.timePeriods = Array.isArray(payload.timePeriods) ? payload.timePeriods : [];
@@ -749,6 +773,7 @@ function renderEventDetail(target, container) {
     const today = new Date();
     const targetDate = new Date(target.targetDate);
     const calDays = timeUtils.calcCalendarDays(today, targetDate);
+    const startDateStr = target.startDate || toLocalDateString(new Date(target.createdAt || Date.now()));
 
     container.innerHTML = `
         <header class="detail-header">
@@ -756,6 +781,9 @@ function renderEventDetail(target, container) {
             <div class="badge">イベント</div>
             <h1 style="color: ${target.color}">${target.name}</h1>
             <div class="total-hours-hero glow-text">あと ${calDays} 日</div>
+            <div class="base-date-selector">
+                開始日: <input type="date" id="start-date-input" value="${startDateStr}">
+            </div>
             <p style="color: var(--text-sub)">目標日: ${target.targetDate}</p>
         </header>
         <div class="card">
@@ -763,6 +791,11 @@ function renderEventDetail(target, container) {
             <button class="btn btn-ghost" id="delete-target-btn" style="color: var(--accent-red); margin-top: 20px;">このターゲットを削除</button>
         </div>
     `;
+
+    container.querySelector('#start-date-input').onchange = (e) => {
+        target.startDate = e.target.value;
+        storage.save();
+    };
 
     container.querySelector('#delete-target-btn').onclick = () => {
         if (confirm('このターゲットを削除しますか？')) {
@@ -775,6 +808,7 @@ function renderEventDetail(target, container) {
 
 function renderStudyDetail(target, container) {
     const baseDateStr = localStorage.getItem(`base_date_${target.id}`) || new Date().toISOString().split('T')[0];
+    const startDateStr = target.startDate || toLocalDateString(new Date(target.createdAt || Date.now()));
     const baseDate = new Date(baseDateStr);
     const targetDate = new Date(target.targetDate);
     const totalHours = timeUtils.calcTotalHours(baseDate, targetDate);
@@ -788,6 +822,9 @@ function renderStudyDetail(target, container) {
             <div class="badge" style="border-color: var(--accent-green); color: var(--accent-green)">勉強・仕事</div>
             <h1 style="color: ${target.color}">${target.name}</h1>
             <div class="total-hours-hero glow-text">あと ${totalHours} 時間</div>
+            <div class="base-date-selector">
+                開始日: <input type="date" id="start-date-input" value="${startDateStr}">
+            </div>
             <div class="base-date-selector">
                 基準日: <input type="date" id="base-date-input" value="${baseDateStr}">
             </div>
@@ -820,6 +857,11 @@ function renderStudyDetail(target, container) {
     `;
 
     // Event Listeners
+    container.querySelector('#start-date-input').onchange = (e) => {
+        target.startDate = e.target.value;
+        storage.save();
+    };
+
     container.querySelector('#base-date-input').onchange = (e) => {
         localStorage.setItem(`base_date_${target.id}`, e.target.value);
         renderDetail(target);
@@ -1009,7 +1051,7 @@ function renderRoad() {
     let roadHtml = '<h1 class="glow-text">Time Road</h1>';
 
     state.targets.forEach(target => {
-        const start = timeUtils.startOfDay(new Date(target.createdAt || Date.now()));
+        const start = timeUtils.startOfDay(new Date(target.startDate || target.createdAt || Date.now()));
         const end = timeUtils.startOfDay(new Date(target.targetDate));
 
         const totalDays = timeUtils.calcCalendarDays(start, end);
@@ -1133,6 +1175,10 @@ function showAddTargetModal() {
                 <input type="text" id="new-target-name" placeholder="例: 英検準1級、定期テスト">
             </div>
             <div class="form-group">
+                <label>開始日</label>
+                <input type="date" id="new-target-start-date" value="${new Date().toISOString().split('T')[0]}">
+            </div>
+            <div class="form-group">
                 <label>締切日（目標日）</label>
                 <input type="date" id="new-target-date" value="${new Date().toISOString().split('T')[0]}">
             </div>
@@ -1158,14 +1204,16 @@ function showAddTargetModal() {
     modal.querySelector('#modal-save').onclick = () => {
         const type = modal.querySelector('input[name="target-type"]:checked').value;
         const name = document.getElementById('new-target-name').value;
+        const startDate = document.getElementById('new-target-start-date').value;
         const date = document.getElementById('new-target-date').value;
         const color = document.getElementById('new-target-color').value;
 
-        if (name && date) {
+        if (name && startDate && date) {
             const newTarget = {
                 id: crypto.randomUUID(),
                 type: type,
                 name: name,
+                startDate: startDate,
                 targetDate: date,
                 color: color,
                 tasks: [],
