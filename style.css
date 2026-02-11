@@ -1008,6 +1008,32 @@ main {
     /* 要素間の隙間を確保 */
 }
 
+.road-tick .tick-percent,
+.road-tick .tick-date,
+.road-tick .marker-remaining {
+    position: static;
+    left: auto;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    transform: none;
+    display: block;
+    text-align: center;
+    line-height: 1.15;
+    white-space: nowrap;
+}
+
+.road-tick .tick-date {
+    font-size: 9px;
+    color: var(--text-sub);
+    opacity: 0.9;
+}
+
+.road-tick .marker-remaining {
+    margin-top: 0;
+    font-size: 8px;
+}
+
 
 .tick-percent {
     font-weight: bold;
