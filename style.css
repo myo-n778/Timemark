@@ -792,6 +792,10 @@ main {
     white-space: nowrap;
 }
 
+.road-marker:not(.marker-today) .marker-label {
+    margin-bottom: 8px;
+}
+
 .marker-dot {
     width: 10px;
     height: 10px;
@@ -1005,6 +1009,7 @@ main {
     flex-direction: column;
     align-items: center;
     gap: 1px;
+    transform: translateY(-10px);
     /* 要素間の隙間を確保 */
 }
 
