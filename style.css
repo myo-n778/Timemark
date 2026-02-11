@@ -827,7 +827,7 @@ main {
 
 .marker-today .marker-label {
     position: absolute;
-    top: 32px;
+    top: 18px;
     /* 道の台形シャドウのすぐ下に配置 (65px -> 32px) */
     color: var(--primary-color);
     font-size: 11px;
@@ -837,7 +837,7 @@ main {
 /* ラベル内の追加情報（あと何日）：TODAY用 */
 .marker-today .marker-remaining {
     position: absolute;
-    top: 45px;
+    top: 30px;
     /* ラベルのすぐ下 (78px -> 45px) */
     font-size: 8px;
     color: var(--secondary-color);
