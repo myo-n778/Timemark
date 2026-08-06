@@ -11,14 +11,15 @@
 - Added Google Apps Script based spreadsheet sync and schedule import.
 - Added `google-apps-script.js` for the spreadsheet-side web app.
 - Set the default Apps Script endpoint in `app.js`:
-  `https://script.google.com/macros/s/AKfycbzwVWyj8-LVBgjMNPKqDLkJtX8YZyUhYzyeMTcO5KlVH9W2Yac0lTPjuACBrLRot6Je/exec`
+  `https://script.google.com/macros/s/AKfycbzU_sk43O2X6vqOxuMs48Cm7-sQfIxD1ysxdVkQCKNFkznjSAOpJmQTb4qwkuFjEcB0fg/exec`
+- The prior default endpoint is automatically replaced with the new one when an existing device opens TimeMark. Custom endpoints are not changed.
 
 ## Spreadsheet
 
 - Spreadsheet:
-  `https://docs.google.com/spreadsheets/d/1yo-HbLO80Zciql2h8rQJqIszyrln6CPqLpjc_QrJNAY/edit?gid=0#gid=0`
+  `https://docs.google.com/spreadsheets/d/1JI_GGXjowdB9pDGckSYZv0e_gk8OxljDyb5u4CFRAOs/edit`
 - Apps Script Web App:
-  `https://script.google.com/macros/s/AKfycbzwVWyj8-LVBgjMNPKqDLkJtX8YZyUhYzyeMTcO5KlVH9W2Yac0lTPjuACBrLRot6Je/exec`
+  `https://script.google.com/macros/s/AKfycbzU_sk43O2X6vqOxuMs48Cm7-sQfIxD1ysxdVkQCKNFkznjSAOpJmQTb4qwkuFjEcB0fg/exec`
 - Data sheet: `TimeMarkData`
 - Columns: `userId`, `userName`, `dataJson`, `updatedAt`
 - Schedule sheet: `TimeMarkSchedule` (configurable in the app)

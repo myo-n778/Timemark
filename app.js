@@ -1,6 +1,7 @@
 // --- Constants & Config ---
 const ROUND_STEP = 0.5;
-const DEFAULT_SYNC_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzwVWyj8-LVBgjMNPKqDLkJtX8YZyUhYzyeMTcO5KlVH9W2Yac0lTPjuACBrLRot6Je/exec';
+const DEFAULT_SYNC_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzU_sk43O2X6vqOxuMs48Cm7-sQfIxD1ysxdVkQCKNFkznjSAOpJmQTb4qwkuFjEcB0fg/exec';
+const LEGACY_SYNC_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzwVWyj8-LVBgjMNPKqDLkJtX8YZyUhYzyeMTcO5KlVH9W2Yac0lTPjuACBrLRot6Je/exec';
 
 // --- Data Models & State ---
 const state = {
@@ -190,7 +191,7 @@ const syncUtils = {
         try {
             const saved = JSON.parse(localStorage.getItem(syncUtils.configKey) || '{}');
             return {
-                endpoint: saved.endpoint || DEFAULT_SYNC_ENDPOINT,
+                endpoint: saved.endpoint === LEGACY_SYNC_ENDPOINT ? DEFAULT_SYNC_ENDPOINT : (saved.endpoint || DEFAULT_SYNC_ENDPOINT),
                 token: saved.token || '',
                 userId: saved.userId || '',
                 userName: saved.userName || '',
