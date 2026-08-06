@@ -445,6 +445,61 @@ main {
     justify-content: space-between;
     align-items: center;
     margin-bottom: var(--spacing-md);
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+
+.sync-status {
+    color: var(--text-sub);
+    font-size: 12px;
+}
+
+.sync-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--spacing-sm);
+}
+
+.sync-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sync-field span {
+    color: var(--text-sub);
+    font-size: 12px;
+}
+
+.sync-field input,
+.sync-field select {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 10px;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: #ffffff;
+    font-size: 14px;
+    outline: none;
+}
+
+.sync-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-md);
+}
+
+.sync-help {
+    margin-top: var(--spacing-sm);
+    color: var(--text-sub);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.sync-help code {
+    color: var(--secondary-color);
 }
 
 .task-list {
@@ -510,6 +565,12 @@ main {
 .road-item-container {
     margin-bottom: var(--spacing-xl);
     padding: var(--spacing-md) 0;
+    cursor: grab;
+}
+
+.road-item-container.dragging {
+    cursor: grabbing;
+    opacity: 0.55;
 }
 
 .road-target-name {
@@ -1151,6 +1212,14 @@ main {
     main {
         max-width: 800px;
         margin: 0 auto;
+    }
+
+    .sync-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .sync-field-wide {
+        grid-column: 1 / -1;
     }
 
     .app-nav {

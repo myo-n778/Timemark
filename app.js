@@ -1,5 +1,6 @@
 // --- Constants & Config ---
 const ROUND_STEP = 0.5;
+const DEFAULT_SYNC_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzwVWyj8-LVBgjMNPKqDLkJtX8YZyUhYzyeMTcO5KlVH9W2Yac0lTPjuACBrLRot6Je/exec';
 
 // --- Data Models & State ---
 const state = {
@@ -39,6 +40,16 @@ function normalizeTarget(target) {
     }
 
     return { ...t, startDate };
+}
+
+function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[ch]));
 }
 
 // --- Storage ---
@@ -169,6 +180,96 @@ const backupUtils = {
                 }
             });
         }
+    }
+};
+
+const syncUtils = {
+    configKey: 'timemark_sync_config',
+
+    getConfig: () => {
+        try {
+            const saved = JSON.parse(localStorage.getItem(syncUtils.configKey) || '{}');
+            return {
+                endpoint: saved.endpoint || DEFAULT_SYNC_ENDPOINT,
+                token: saved.token || '',
+                userId: saved.userId || '',
+                userName: saved.userName || '',
+                scheduleSheet: saved.scheduleSheet || 'TimeMarkSchedule'
+            };
+        } catch (e) {
+            return { endpoint: '', token: '', userId: '', userName: '', scheduleSheet: 'TimeMarkSchedule' };
+        }
+    },
+
+    saveConfig: (config) => {
+        const current = syncUtils.getConfig();
+        localStorage.setItem(syncUtils.configKey, JSON.stringify({ ...current, ...config }));
+    },
+
+    request: async (action, payload = {}) => {
+        const config = syncUtils.getConfig();
+        if (!config.endpoint) throw new Error('Apps Script URLを入力してください');
+
+        const response = await fetch(config.endpoint, {
+            method: 'POST',
+            body: JSON.stringify({
+                action,
+                token: config.token,
+                ...payload
+            })
+        });
+        const text = await response.text();
+        let result;
+        try {
+            result = JSON.parse(text || '{}');
+        } catch (e) {
+            throw new Error('Apps ScriptからJSON以外の応答が返りました。デプロイURLを確認してください');
+        }
+
+        if (!response.ok || !result.ok) {
+            throw new Error(result.error || 'スプレッドシートとの通信に失敗しました');
+        }
+        return result;
+    },
+
+    listUsers: async () => {
+        const result = await syncUtils.request('listUsers');
+        return Array.isArray(result.users) ? result.users : [];
+    },
+
+    saveCurrentUser: async (userName) => {
+        const name = (userName || '').trim();
+        if (!name) throw new Error('ユーザー名を入力してください');
+
+        const config = syncUtils.getConfig();
+        const result = await syncUtils.request('saveUser', {
+            userId: config.userId,
+            userName: name,
+            backup: backupUtils.createBackup()
+        });
+
+        syncUtils.saveConfig({
+            userId: result.user?.userId || config.userId,
+            userName: result.user?.userName || name
+        });
+        return result.user;
+    },
+
+    loadUser: async (userId) => {
+        if (!userId) throw new Error('ユーザーを選択してください');
+
+        const result = await syncUtils.request('loadUser', { userId });
+        backupUtils.applyBackup(result.backup);
+        syncUtils.saveConfig({
+            userId: result.user?.userId || userId,
+            userName: result.user?.userName || ''
+        });
+        return result.user;
+    },
+
+    loadSchedule: async (sheetName) => {
+        const result = await syncUtils.request('loadSchedule', { sheetName });
+        return Array.isArray(result.entries) ? result.entries : [];
     }
 };
 
@@ -343,6 +444,7 @@ const views = {
 function renderSettings() {
     const container = document.getElementById('settings-view');
     if (!container) return;
+    const syncConfig = syncUtils.getConfig();
 
     const dayLabels = {
         mon: '月曜日', tue: '火曜日', wed: '水曜日', thu: '木曜日', fri: '金曜日',
@@ -394,6 +496,45 @@ function renderSettings() {
                     </div>
                 `).join('')}
             </div>
+        </section>
+
+        <section class="settings-section">
+            <div class="task-section-header">
+                <h2>スプレッドシート同期</h2>
+                <span class="sync-status" id="sync-status">${syncConfig.userName ? `選択中: ${escapeHTML(syncConfig.userName)}` : '未選択'}</span>
+            </div>
+            <div class="sync-grid">
+                <label class="sync-field sync-field-wide">
+                    <span>Apps Script URL</span>
+                    <input type="url" id="sync-url-input" value="${escapeHTML(syncConfig.endpoint)}" placeholder="https://script.google.com/macros/s/.../exec">
+                </label>
+                <label class="sync-field">
+                    <span>共有トークン</span>
+                    <input type="password" id="sync-token-input" value="${escapeHTML(syncConfig.token)}" placeholder="任意">
+                </label>
+                <label class="sync-field">
+                    <span>ユーザー名</span>
+                    <input type="text" id="sync-user-name-input" value="${escapeHTML(syncConfig.userName)}" placeholder="例: やましぃ先生">
+                </label>
+                <label class="sync-field">
+                    <span>保存済みユーザー</span>
+                    <select id="sync-user-select">
+                        <option value="${escapeHTML(syncConfig.userId)}" data-user-name="${escapeHTML(syncConfig.userName)}">${syncConfig.userName ? escapeHTML(syncConfig.userName) : 'ユーザー一覧を取得してください'}</option>
+                    </select>
+                </label>
+                <label class="sync-field sync-field-wide">
+                    <span>予定表シート名（date・hours列）</span>
+                    <input type="text" id="schedule-sheet-input" value="${escapeHTML(syncConfig.scheduleSheet)}" placeholder="TimeMarkSchedule">
+                </label>
+            </div>
+            <div class="sync-actions">
+                <button class="btn btn-ghost btn-sm" id="sync-save-config-btn">設定保存</button>
+                <button class="btn btn-ghost btn-sm" id="sync-list-users-btn">ユーザー一覧取得</button>
+                <button class="btn btn-primary btn-sm" id="sync-save-user-btn">このユーザーに保存</button>
+                <button class="btn btn-ghost btn-sm" id="sync-load-user-btn">選択ユーザーを読み込み</button>
+                <button class="btn btn-ghost btn-sm" id="sync-load-schedule-btn">予定表を読み込み</button>
+            </div>
+            <p class="sync-help">予定表シートの <code>date</code> と <code>hours</code> を、例外日の稼働時間として取り込みます。同じ日付の設定は上書きされます。</p>
         </section>
 
         <section class="settings-section">
@@ -463,6 +604,113 @@ function renderSettings() {
             if (input) input.value = val;
         });
         storage.save();
+    };
+
+    const syncStatus = container.querySelector('#sync-status');
+    const syncUrlInput = container.querySelector('#sync-url-input');
+    const syncTokenInput = container.querySelector('#sync-token-input');
+    const syncUserNameInput = container.querySelector('#sync-user-name-input');
+    const syncUserSelect = container.querySelector('#sync-user-select');
+    const scheduleSheetInput = container.querySelector('#schedule-sheet-input');
+
+    function saveSyncInputs() {
+        const selectedOption = syncUserSelect.options[syncUserSelect.selectedIndex];
+        const selectedName = selectedOption?.dataset.userName || '';
+        const typedName = syncUserNameInput.value.trim();
+        syncUtils.saveConfig({
+            endpoint: syncUrlInput.value.trim(),
+            token: syncTokenInput.value.trim(),
+            userId: typedName && typedName !== selectedName ? '' : (syncUserSelect.value || syncUtils.getConfig().userId),
+            userName: typedName || selectedName,
+            scheduleSheet: scheduleSheetInput.value.trim() || 'TimeMarkSchedule'
+        });
+    }
+
+    function setSyncStatus(message) {
+        syncStatus.textContent = message;
+    }
+
+    function populateSyncUsers(users) {
+        const config = syncUtils.getConfig();
+        if (users.length === 0) {
+            syncUserSelect.innerHTML = '<option value="">保存済みユーザーはありません</option>';
+            return;
+        }
+
+        syncUserSelect.innerHTML = users.map(user => `
+            <option value="${escapeHTML(user.userId)}" data-user-name="${escapeHTML(user.userName)}" ${user.userId === config.userId ? 'selected' : ''}>
+                ${escapeHTML(user.userName)}
+            </option>
+        `).join('');
+    }
+
+    container.querySelector('#sync-save-config-btn').onclick = () => {
+        saveSyncInputs();
+        setSyncStatus('設定を保存しました');
+    };
+
+    container.querySelector('#sync-list-users-btn').onclick = async () => {
+        try {
+            saveSyncInputs();
+            setSyncStatus('取得中...');
+            const users = await syncUtils.listUsers();
+            populateSyncUsers(users);
+            setSyncStatus(`${users.length}件のユーザーを取得しました`);
+        } catch (err) {
+            setSyncStatus(`取得失敗: ${err.message}`);
+        }
+    };
+
+    syncUserSelect.onchange = () => {
+        const selectedOption = syncUserSelect.options[syncUserSelect.selectedIndex];
+        if (selectedOption?.dataset.userName) {
+            syncUserNameInput.value = selectedOption.dataset.userName;
+        }
+        saveSyncInputs();
+        setSyncStatus(syncUserNameInput.value ? `選択中: ${syncUserNameInput.value}` : '未選択');
+    };
+
+    container.querySelector('#sync-save-user-btn').onclick = async () => {
+        try {
+            saveSyncInputs();
+            setSyncStatus('保存中...');
+            const user = await syncUtils.saveCurrentUser(syncUserNameInput.value);
+            syncUserSelect.innerHTML = `<option value="${escapeHTML(user.userId)}" data-user-name="${escapeHTML(user.userName)}">${escapeHTML(user.userName)}</option>`;
+            syncUserSelect.value = user.userId;
+            setSyncStatus(`保存しました: ${user.userName}`);
+        } catch (err) {
+            setSyncStatus(`保存失敗: ${err.message}`);
+        }
+    };
+
+    container.querySelector('#sync-load-user-btn').onclick = async () => {
+        try {
+            saveSyncInputs();
+            if (!confirm('現在の端末内データを、選択したユーザーのスプレッドシート上のデータで置き換えますか？')) return;
+            setSyncStatus('読み込み中...');
+            const user = await syncUtils.loadUser(syncUserSelect.value);
+            switchView('list');
+            setSyncStatus(`読み込みました: ${user.userName}`);
+        } catch (err) {
+            setSyncStatus(`読込失敗: ${err.message}`);
+        }
+    };
+
+    container.querySelector('#sync-load-schedule-btn').onclick = async () => {
+        try {
+            saveSyncInputs();
+            const sheetName = scheduleSheetInput.value.trim() || 'TimeMarkSchedule';
+            if (!confirm(`「${sheetName}」の予定表を読み込み、同じ日付の例外日設定を上書きしますか？`)) return;
+            setSyncStatus('予定表を読み込み中...');
+            const entries = await syncUtils.loadSchedule(sheetName);
+            entries.forEach(({ date, hours }) => {
+                state.customDates[date] = hours;
+            });
+            storage.save();
+            setSyncStatus(`${entries.length}日分の予定表を読み込みました`);
+        } catch (err) {
+            setSyncStatus(`予定表の読込失敗: ${err.message}`);
+        }
     };
 
     container.querySelector('#export-backup-btn').onclick = () => {
@@ -919,13 +1167,7 @@ function renderList() {
 
     const today = new Date();
 
-    // Sort targets: Study first, then Event
-    const sortedTargets = [...state.targets].sort((a, b) => {
-        if (a.type === b.type) return 0;
-        return a.type === 'study' ? -1 : 1;
-    });
-
-    listContainer.innerHTML = sortedTargets.map(target => {
+    listContainer.innerHTML = state.targets.map(target => {
         const targetDate = new Date(target.targetDate);
         const calDays = timeUtils.calcCalendarDays(today, targetDate);
 
@@ -1000,19 +1242,7 @@ function setupDragging(container) {
             item.classList.remove('dragging');
             draggingItem = null;
 
-            // Save new order
-            const newOrder = Array.from(container.querySelectorAll('.target-item'))
-                .map(el => el.dataset.id);
-
-            // Reorder state.targets based on this newOrder
-            const reorderedTargets = [];
-            newOrder.forEach(id => {
-                const t = state.targets.find(target => target.id === id);
-                if (t) reorderedTargets.push(t);
-            });
-
-            state.targets = reorderedTargets;
-            storage.save();
+            saveTargetOrder(container, '.target-item');
         });
 
         item.addEventListener('dragover', (e) => {
@@ -1180,6 +1410,91 @@ function getDragAfterElement(container, y) {
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
+function saveTargetOrder(container, itemSelector) {
+    const targetsById = new Map(state.targets.map(target => [target.id, target]));
+    const orderedIds = Array.from(container.querySelectorAll(itemSelector)).map(item => item.dataset.id);
+    const reordered = orderedIds.map(id => targetsById.get(id)).filter(Boolean);
+
+    if (reordered.length !== state.targets.length) return;
+    state.targets = reordered;
+    storage.save();
+}
+
+function getRoadDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.road-item-container:not(.dragging)')];
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        return offset < 0 && offset > closest.offset ? { offset, element: child } : closest;
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+function setupRoadDragging(container) {
+    let draggingItem = null;
+    const moveItem = (clientY) => {
+        if (!draggingItem) return;
+        const afterElement = getRoadDragAfterElement(container, clientY);
+        if (afterElement) container.insertBefore(draggingItem, afterElement);
+        else container.appendChild(draggingItem);
+    };
+
+    container.querySelectorAll('.road-item-container').forEach(item => {
+        let touchTimer = null;
+        let touchDragging = false;
+        let startX = 0;
+        let startY = 0;
+
+        item.addEventListener('dragstart', (event) => {
+            draggingItem = item;
+            item.classList.add('dragging');
+            event.dataTransfer.effectAllowed = 'move';
+        });
+        item.addEventListener('dragend', () => {
+            item.classList.remove('dragging');
+            draggingItem = null;
+            saveTargetOrder(container, '.road-item-container');
+        });
+        item.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            moveItem(event.clientY);
+        });
+
+        item.addEventListener('touchstart', (event) => {
+            if (event.touches.length !== 1) return;
+            startX = event.touches[0].clientX;
+            startY = event.touches[0].clientY;
+            touchTimer = setTimeout(() => {
+                touchDragging = true;
+                draggingItem = item;
+                item.classList.add('dragging');
+            }, 400);
+        }, { passive: true });
+        item.addEventListener('touchmove', (event) => {
+            if (event.touches.length !== 1) return;
+            const touch = event.touches[0];
+            if (!touchDragging) {
+                if (Math.abs(touch.clientX - startX) > 10 || Math.abs(touch.clientY - startY) > 10) {
+                    clearTimeout(touchTimer);
+                    touchTimer = null;
+                }
+                return;
+            }
+            event.preventDefault();
+            moveItem(touch.clientY);
+        }, { passive: false });
+        const finishTouchDrag = () => {
+            clearTimeout(touchTimer);
+            if (!touchDragging) return;
+            item.classList.remove('dragging');
+            touchDragging = false;
+            draggingItem = null;
+            saveTargetOrder(container, '.road-item-container');
+        };
+        item.addEventListener('touchend', finishTouchDrag, { passive: true });
+        item.addEventListener('touchcancel', finishTouchDrag, { passive: true });
+    });
+}
+
 function renderRoad() {
     const roadContainer = document.getElementById('road-view');
     if (!roadContainer) return;
@@ -1243,7 +1558,7 @@ function renderRoad() {
         `;
 
         roadHtml += `
-            <div class="road-item-container">
+            <div class="road-item-container" data-id="${target.id}" draggable="true">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
                     <div class="road-target-name" style="color: ${target.color}">${target.name}</div>
                     <div class="road-countdown-badge">
@@ -1290,6 +1605,7 @@ function renderRoad() {
     });
 
     roadContainer.innerHTML = roadHtml;
+    setupRoadDragging(roadContainer);
 }
 
 
@@ -1444,3 +1760,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const lastId = localStorage.getItem('timemark_selected_id');
     switchView(lastView, lastId);
 });
+
+// PWA: cache the app shell for reliable launch on iPhone, iPad, Mac, Android, and Windows.
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js').catch((error) => {
+            console.warn('Service worker registration failed:', error);
+        });
+    });
+}
