@@ -2,12 +2,13 @@
 
 ## 提供形態
 
-- 静的WebアプリをPWAとして提供する。iPhone、iPad、Mac、Android、Windowsでインストールして利用できる。
-- インストールとService Workerの利用にはHTTPS公開が必要。ローカルホストは開発確認用。
+- TimeMarkは端末内へ画面・計算・データ形式を同梱するパッケージアプリとして提供する。最初の配布対象はiPhone、iPad、Macで、同じコード基盤からAndroidとWindowsにも展開する。
+- アプリの起動・端末内保存・JSONのインポート／エクスポートはWeb公開やGitHub Pagesに依存しない。
+- PWAファイルはブラウザ用フォールバックとして残すが、パッケージアプリではService Workerを登録しない。
 
 ## データ
 
-- 端末内データは `localStorage` に保存する。
+- 端末内データは各OSのアプリWebViewが保持する `localStorage` に保存する。アプリを削除する前にはJSONエクスポートで復旧用バックアップを作成できる。
 - Googleスプレッドシート同期は、ユーザーごとのTimeMarkバックアップを `TimeMarkData` シートへ保存・読込する。
 - 予定表読込は `TimeMarkSchedule`（設定画面で変更可）の `date`、`hours` 列を読み、例外日の稼働時間へ反映する。同一日付は上書きする。
 

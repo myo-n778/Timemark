@@ -1,0 +1,21 @@
+{
+  "name": "timemark",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TimeMark native package application",
+  "type": "module",
+  "scripts": {
+    "prepare:desktop": "node scripts/prepare-tauri-assets.mjs",
+    "tauri": "npm run prepare:desktop && tauri",
+    "tauri:dev": "npm run prepare:desktop && tauri dev",
+    "tauri:build": "npm run prepare:desktop && tauri build",
+    "tauri:ios:init": "npm run prepare:desktop && tauri ios init",
+    "tauri:ios:build": "npm run prepare:desktop && tauri ios build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
+  }
+}

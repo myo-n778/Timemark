@@ -1762,8 +1762,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     switchView(lastView, lastId);
 });
 
-// PWA: cache the app shell for reliable launch on iPhone, iPad, Mac, Android, and Windows.
-if ('serviceWorker' in navigator) {
+// The packaged app ships its files inside the installed bundle. Service Worker is
+// only needed by the separately maintained browser/PWA fallback.
+const isPackagedApp = '__TAURI_INTERNALS__' in window;
+if (!isPackagedApp && 'serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./service-worker.js').catch((error) => {
             console.warn('Service worker registration failed:', error);
