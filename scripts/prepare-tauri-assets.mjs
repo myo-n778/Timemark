@@ -6,6 +6,7 @@ const dist = resolve(projectRoot, 'dist');
 const assets = [
   'index.html',
   'app.js',
+  'native-google-sync.js',
   'style.css',
   'syukujitsu.csv',
   'manifest.webmanifest',

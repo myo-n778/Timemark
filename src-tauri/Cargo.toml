@@ -12,4 +12,8 @@ crate-type = ["staticlib", "cdylib", "lib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tauri = { version = "2", features = [] }
+tauri-plugin-auth-session = { git = "https://github.com/yanqianglu/tauri-plugin-auth-session", rev = "b335cfff0662d04e468df8e32869c047e6400135" }

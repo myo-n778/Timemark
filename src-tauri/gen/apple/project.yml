@@ -53,6 +53,10 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         CFBundleShortVersionString: 0.1.0
         CFBundleVersion: "0.1.0"
+        CFBundleURLTypes:
+          - CFBundleURLName: jp.myon778.timemark.oauth
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.281403148439-oejntdlhvf9f0ihq2bg5k9oeb0dm70g2
     entitlements:
       path: timemark_iOS/timemark_iOS.entitlements
     scheme:

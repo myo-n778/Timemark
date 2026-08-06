@@ -1,7 +1,7 @@
+import { googleNativeSync } from './native-google-sync.js';
+
 // --- Constants & Config ---
 const ROUND_STEP = 0.5;
-const DEFAULT_SYNC_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzU_sk43O2X6vqOxuMs48Cm7-sQfIxD1ysxdVkQCKNFkznjSAOpJmQTb4qwkuFjEcB0fg/exec';
-const LEGACY_SYNC_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzwVWyj8-LVBgjMNPKqDLkJtX8YZyUhYzyeMTcO5KlVH9W2Yac0lTPjuACBrLRot6Je/exec';
 
 // --- Data Models & State ---
 const state = {
@@ -184,93 +184,89 @@ const backupUtils = {
     }
 };
 
-const syncUtils = {
-    configKey: 'timemark_sync_config',
+// Google Sheets direct synchronization for the packaged app. Unlike the
+// legacy Apps Script bridge, each person owns and authorizes their own sheet.
+const googleSheetSync = {
+    configKey: 'timemark_google_sheet_config',
 
     getConfig: () => {
         try {
-            const saved = JSON.parse(localStorage.getItem(syncUtils.configKey) || '{}');
+            const saved = JSON.parse(localStorage.getItem(googleSheetSync.configKey) || '{}');
             return {
-                endpoint: saved.endpoint === LEGACY_SYNC_ENDPOINT ? DEFAULT_SYNC_ENDPOINT : (saved.endpoint || DEFAULT_SYNC_ENDPOINT),
-                token: saved.token || '',
-                userId: saved.userId || '',
-                userName: saved.userName || '',
-                scheduleSheet: saved.scheduleSheet || 'TimeMarkSchedule'
+                spreadsheetId: saved.spreadsheetId || '',
+                spreadsheetUrl: saved.spreadsheetUrl || '',
+                accountEmail: saved.accountEmail || ''
             };
-        } catch (e) {
-            return { endpoint: '', token: '', userId: '', userName: '', scheduleSheet: 'TimeMarkSchedule' };
+        } catch {
+            return { spreadsheetId: '', spreadsheetUrl: '', accountEmail: '' };
         }
     },
 
-    saveConfig: (config) => {
-        const current = syncUtils.getConfig();
-        localStorage.setItem(syncUtils.configKey, JSON.stringify({ ...current, ...config }));
+    saveConfig: (next) => {
+        localStorage.setItem(googleSheetSync.configKey, JSON.stringify({ ...googleSheetSync.getConfig(), ...next }));
     },
 
-    request: async (action, payload = {}) => {
-        const config = syncUtils.getConfig();
-        if (!config.endpoint) throw new Error('Apps Script URLを入力してください');
+    extractSpreadsheetId: (value) => {
+        const text = String(value || '').trim();
+        const match = text.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+        return match?.[1] || (/^[a-zA-Z0-9_-]{20,}$/.test(text) ? text : '');
+    },
 
-        const response = await fetch(config.endpoint, {
-            method: 'POST',
-            body: JSON.stringify({
-                action,
-                token: config.token,
-                ...payload
-            })
+    signIn: async () => {
+        const identity = await googleNativeSync.signIn();
+        googleSheetSync.saveConfig({ accountEmail: identity.email || '' });
+        return identity;
+    },
+
+    createSheet: async () => {
+        const created = await googleNativeSync.createSpreadsheet();
+        const identity = googleNativeSync.getSession() || {};
+        googleSheetSync.saveConfig({
+            spreadsheetId: created.spreadsheetId,
+            spreadsheetUrl: created.spreadsheetUrl,
+            accountEmail: identity.email || ''
         });
-        const text = await response.text();
-        let result;
-        try {
-            result = JSON.parse(text || '{}');
-        } catch (e) {
-            throw new Error('Apps ScriptからJSON以外の応答が返りました。デプロイURLを確認してください');
-        }
-
-        if (!response.ok || !result.ok) {
-            throw new Error(result.error || 'スプレッドシートとの通信に失敗しました');
-        }
-        return result;
+        await googleNativeSync.saveBackup(created.spreadsheetId, JSON.stringify(backupUtils.createBackup()));
+        return created;
     },
 
-    listUsers: async () => {
-        const result = await syncUtils.request('listUsers');
-        return Array.isArray(result.users) ? result.users : [];
-    },
-
-    saveCurrentUser: async (userName) => {
-        const name = (userName || '').trim();
-        if (!name) throw new Error('ユーザー名を入力してください');
-
-        const config = syncUtils.getConfig();
-        const result = await syncUtils.request('saveUser', {
-            userId: config.userId,
-            userName: name,
-            backup: backupUtils.createBackup()
+    connectExisting: async (value) => {
+        const spreadsheetId = googleSheetSync.extractSpreadsheetId(value);
+        if (!spreadsheetId) throw new Error('GoogleスプレッドシートのURLまたはIDを入力してください');
+        // Confirm that the signed-in person is allowed to read this sheet before
+        // persisting its ID in the app.
+        await googleNativeSync.loadBackup(spreadsheetId);
+        const identity = googleNativeSync.getSession() || {};
+        googleSheetSync.saveConfig({
+            spreadsheetId,
+            spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+            accountEmail: identity.email || ''
         });
-
-        syncUtils.saveConfig({
-            userId: result.user?.userId || config.userId,
-            userName: result.user?.userName || name
-        });
-        return result.user;
     },
 
-    loadUser: async (userId) => {
-        if (!userId) throw new Error('ユーザーを選択してください');
-
-        const result = await syncUtils.request('loadUser', { userId });
-        backupUtils.applyBackup(result.backup);
-        syncUtils.saveConfig({
-            userId: result.user?.userId || userId,
-            userName: result.user?.userName || ''
-        });
-        return result.user;
+    requireSheetId: () => {
+        const { spreadsheetId } = googleSheetSync.getConfig();
+        if (!spreadsheetId) throw new Error('先にGoogleスプレッドシートを作成または接続してください');
+        return spreadsheetId;
     },
 
-    loadSchedule: async (sheetName) => {
-        const result = await syncUtils.request('loadSchedule', { sheetName });
-        return Array.isArray(result.entries) ? result.entries : [];
+    save: async () => {
+        const spreadsheetId = googleSheetSync.requireSheetId();
+        await googleNativeSync.saveBackup(spreadsheetId, JSON.stringify(backupUtils.createBackup()));
+    },
+
+    load: async () => {
+        const spreadsheetId = googleSheetSync.requireSheetId();
+        const backup = await googleNativeSync.loadBackup(spreadsheetId);
+        if (!backup) throw new Error('このシートにはTimeMarkの保存データがありません');
+        backupUtils.applyBackup(JSON.parse(backup));
+    },
+
+    loadSchedule: async () => googleNativeSync.loadSchedule(googleSheetSync.requireSheetId()),
+
+    disconnect: () => {
+        googleNativeSync.disconnect();
+        localStorage.removeItem(googleSheetSync.configKey);
     }
 };
 
@@ -445,7 +441,8 @@ const views = {
 function renderSettings() {
     const container = document.getElementById('settings-view');
     if (!container) return;
-    const syncConfig = syncUtils.getConfig();
+    const googleSyncConfig = googleSheetSync.getConfig();
+    const nativeGoogleSyncAvailable = googleNativeSync.isAvailable();
 
     const dayLabels = {
         mon: '月曜日', tue: '火曜日', wed: '水曜日', thu: '木曜日', fri: '金曜日',
@@ -501,41 +498,26 @@ function renderSettings() {
 
         <section class="settings-section">
             <div class="task-section-header">
-                <h2>スプレッドシート同期</h2>
-                <span class="sync-status" id="sync-status">${syncConfig.userName ? `選択中: ${escapeHTML(syncConfig.userName)}` : '未選択'}</span>
+                <h2>Googleスプレッドシート同期</h2>
+                <span class="sync-status" id="google-sync-status">${googleSyncConfig.spreadsheetId ? `接続先: ${escapeHTML(googleSyncConfig.accountEmail || 'TimeMarkシート')}` : '未接続'}</span>
             </div>
             <div class="sync-grid">
                 <label class="sync-field sync-field-wide">
-                    <span>Apps Script URL</span>
-                    <input type="url" id="sync-url-input" value="${escapeHTML(syncConfig.endpoint)}" placeholder="https://script.google.com/macros/s/.../exec">
-                </label>
-                <label class="sync-field">
-                    <span>共有トークン</span>
-                    <input type="password" id="sync-token-input" value="${escapeHTML(syncConfig.token)}" placeholder="任意">
-                </label>
-                <label class="sync-field">
-                    <span>ユーザー名</span>
-                    <input type="text" id="sync-user-name-input" value="${escapeHTML(syncConfig.userName)}" placeholder="例: やましぃ先生">
-                </label>
-                <label class="sync-field">
-                    <span>保存済みユーザー</span>
-                    <select id="sync-user-select">
-                        <option value="${escapeHTML(syncConfig.userId)}" data-user-name="${escapeHTML(syncConfig.userName)}">${syncConfig.userName ? escapeHTML(syncConfig.userName) : 'ユーザー一覧を取得してください'}</option>
-                    </select>
-                </label>
-                <label class="sync-field sync-field-wide">
-                    <span>予定表シート名（date・hours列）</span>
-                    <input type="text" id="schedule-sheet-input" value="${escapeHTML(syncConfig.scheduleSheet)}" placeholder="TimeMarkSchedule">
+                    <span>TimeMarkシートURL（このアプリで作成したシート）</span>
+                    <input type="url" id="google-sheet-url-input" value="${escapeHTML(googleSyncConfig.spreadsheetUrl)}" placeholder="新しく作成すると自動で設定されます" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>
                 </label>
             </div>
             <div class="sync-actions">
-                <button class="btn btn-ghost btn-sm" id="sync-save-config-btn">設定保存</button>
-                <button class="btn btn-ghost btn-sm" id="sync-list-users-btn">ユーザー一覧取得</button>
-                <button class="btn btn-primary btn-sm" id="sync-save-user-btn">このユーザーに保存</button>
-                <button class="btn btn-ghost btn-sm" id="sync-load-user-btn">選択ユーザーを読み込み</button>
-                <button class="btn btn-ghost btn-sm" id="sync-load-schedule-btn">予定表を読み込み</button>
+                <button class="btn btn-ghost btn-sm" id="google-sign-in-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>Googleに接続</button>
+                <button class="btn btn-primary btn-sm" id="google-create-sheet-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>新しいTimeMarkシートを作成</button>
+                <button class="btn btn-ghost btn-sm" id="google-connect-sheet-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>作成済みシートを接続</button>
+                <button class="btn btn-primary btn-sm" id="google-save-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>シートへ保存</button>
+                <button class="btn btn-ghost btn-sm" id="google-load-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>シートから読み込み</button>
+                <button class="btn btn-ghost btn-sm" id="google-load-schedule-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>予定表を読み込み</button>
+                <button class="btn btn-ghost btn-sm" id="google-disconnect-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>接続を解除</button>
             </div>
-            <p class="sync-help">予定表シートの <code>date</code> と <code>hours</code> を、例外日の稼働時間として取り込みます。同じ日付の設定は上書きされます。</p>
+            <p class="sync-help">GASの設定は不要です。Googleログイン後に、利用者ごとのTimeMarkシートを作成して保存できます。ログイン情報は端末に保存せず、アプリを閉じると再接続が必要です。予定表シートの <code>date</code>・<code>hours</code>・<code>note</code> は、例外日の稼働時間として取り込みます。</p>
+            ${nativeGoogleSyncAvailable ? '' : '<p class="sync-help">この画面を利用するには、TimeMarkアプリ版を開いてください。</p>'}
         </section>
 
         <section class="settings-section">
@@ -607,112 +589,96 @@ function renderSettings() {
         storage.save();
     };
 
-    const syncStatus = container.querySelector('#sync-status');
-    const syncUrlInput = container.querySelector('#sync-url-input');
-    const syncTokenInput = container.querySelector('#sync-token-input');
-    const syncUserNameInput = container.querySelector('#sync-user-name-input');
-    const syncUserSelect = container.querySelector('#sync-user-select');
-    const scheduleSheetInput = container.querySelector('#schedule-sheet-input');
+    const googleSyncStatus = container.querySelector('#google-sync-status');
+    const googleSheetUrlInput = container.querySelector('#google-sheet-url-input');
 
-    function saveSyncInputs() {
-        const selectedOption = syncUserSelect.options[syncUserSelect.selectedIndex];
-        const selectedName = selectedOption?.dataset.userName || '';
-        const typedName = syncUserNameInput.value.trim();
-        syncUtils.saveConfig({
-            endpoint: syncUrlInput.value.trim(),
-            token: syncTokenInput.value.trim(),
-            userId: typedName && typedName !== selectedName ? '' : (syncUserSelect.value || syncUtils.getConfig().userId),
-            userName: typedName || selectedName,
-            scheduleSheet: scheduleSheetInput.value.trim() || 'TimeMarkSchedule'
-        });
+    function setGoogleSyncStatus(message) {
+        googleSyncStatus.textContent = message;
     }
 
-    function setSyncStatus(message) {
-        syncStatus.textContent = message;
+    async function connectGoogle() {
+        setGoogleSyncStatus('Googleに接続中...');
+        const identity = await googleSheetSync.signIn();
+        setGoogleSyncStatus(`Googleに接続しました${identity.email ? `: ${identity.email}` : ''}`);
     }
 
-    function populateSyncUsers(users) {
-        const config = syncUtils.getConfig();
-        if (users.length === 0) {
-            syncUserSelect.innerHTML = '<option value="">保存済みユーザーはありません</option>';
-            return;
-        }
+    if (nativeGoogleSyncAvailable) {
+        container.querySelector('#google-sign-in-btn').onclick = async () => {
+            try {
+                await connectGoogle();
+            } catch (err) {
+                setGoogleSyncStatus(`接続失敗: ${err.message}`);
+            }
+        };
 
-        syncUserSelect.innerHTML = users.map(user => `
-            <option value="${escapeHTML(user.userId)}" data-user-name="${escapeHTML(user.userName)}" ${user.userId === config.userId ? 'selected' : ''}>
-                ${escapeHTML(user.userName)}
-            </option>
-        `).join('');
+        container.querySelector('#google-create-sheet-btn').onclick = async () => {
+            try {
+                await connectGoogle();
+                setGoogleSyncStatus('新しいTimeMarkシートを作成・保存中...');
+                const created = await googleSheetSync.createSheet();
+                googleSheetUrlInput.value = created.spreadsheetUrl;
+                setGoogleSyncStatus('新しいTimeMarkシートを作成して保存しました');
+            } catch (err) {
+                setGoogleSyncStatus(`作成失敗: ${err.message}`);
+            }
+        };
+
+        container.querySelector('#google-connect-sheet-btn').onclick = async () => {
+            try {
+                const sheetUrl = googleSheetUrlInput.value.trim();
+                if (!sheetUrl) throw new Error('TimeMarkシートURLを入力してください');
+                await connectGoogle();
+                setGoogleSyncStatus('接続を確認中...');
+                await googleSheetSync.connectExisting(sheetUrl);
+                setGoogleSyncStatus('作成済みのTimeMarkシートを接続しました');
+            } catch (err) {
+                setGoogleSyncStatus(`接続失敗: ${err.message}`);
+            }
+        };
+
+        container.querySelector('#google-save-btn').onclick = async () => {
+            try {
+                await connectGoogle();
+                setGoogleSyncStatus('シートへ保存中...');
+                await googleSheetSync.save();
+                setGoogleSyncStatus('シートへ保存しました');
+            } catch (err) {
+                setGoogleSyncStatus(`保存失敗: ${err.message}`);
+            }
+        };
+
+        container.querySelector('#google-load-btn').onclick = async () => {
+            try {
+                if (!confirm('現在の端末内データを、TimeMarkシート上のバックアップで置き換えますか？')) return;
+                await connectGoogle();
+                setGoogleSyncStatus('シートから読み込み中...');
+                await googleSheetSync.load();
+                switchView('list');
+            } catch (err) {
+                setGoogleSyncStatus(`読込失敗: ${err.message}`);
+            }
+        };
+
+        container.querySelector('#google-load-schedule-btn').onclick = async () => {
+            try {
+                if (!confirm('予定表を読み込み、同じ日付の例外日設定を上書きしますか？')) return;
+                await connectGoogle();
+                setGoogleSyncStatus('予定表を読み込み中...');
+                const entries = await googleSheetSync.loadSchedule();
+                entries.forEach(({ date, hours }) => { state.customDates[date] = hours; });
+                storage.save();
+                setGoogleSyncStatus(`${entries.length}日分の予定表を読み込みました`);
+            } catch (err) {
+                setGoogleSyncStatus(`予定表の読込失敗: ${err.message}`);
+            }
+        };
+
+        container.querySelector('#google-disconnect-btn').onclick = () => {
+            if (!confirm('この端末とTimeMarkシートの接続設定を解除しますか？ シート上のデータは削除されません。')) return;
+            googleSheetSync.disconnect();
+            renderSettings();
+        };
     }
-
-    container.querySelector('#sync-save-config-btn').onclick = () => {
-        saveSyncInputs();
-        setSyncStatus('設定を保存しました');
-    };
-
-    container.querySelector('#sync-list-users-btn').onclick = async () => {
-        try {
-            saveSyncInputs();
-            setSyncStatus('取得中...');
-            const users = await syncUtils.listUsers();
-            populateSyncUsers(users);
-            setSyncStatus(`${users.length}件のユーザーを取得しました`);
-        } catch (err) {
-            setSyncStatus(`取得失敗: ${err.message}`);
-        }
-    };
-
-    syncUserSelect.onchange = () => {
-        const selectedOption = syncUserSelect.options[syncUserSelect.selectedIndex];
-        if (selectedOption?.dataset.userName) {
-            syncUserNameInput.value = selectedOption.dataset.userName;
-        }
-        saveSyncInputs();
-        setSyncStatus(syncUserNameInput.value ? `選択中: ${syncUserNameInput.value}` : '未選択');
-    };
-
-    container.querySelector('#sync-save-user-btn').onclick = async () => {
-        try {
-            saveSyncInputs();
-            setSyncStatus('保存中...');
-            const user = await syncUtils.saveCurrentUser(syncUserNameInput.value);
-            syncUserSelect.innerHTML = `<option value="${escapeHTML(user.userId)}" data-user-name="${escapeHTML(user.userName)}">${escapeHTML(user.userName)}</option>`;
-            syncUserSelect.value = user.userId;
-            setSyncStatus(`保存しました: ${user.userName}`);
-        } catch (err) {
-            setSyncStatus(`保存失敗: ${err.message}`);
-        }
-    };
-
-    container.querySelector('#sync-load-user-btn').onclick = async () => {
-        try {
-            saveSyncInputs();
-            if (!confirm('現在の端末内データを、選択したユーザーのスプレッドシート上のデータで置き換えますか？')) return;
-            setSyncStatus('読み込み中...');
-            const user = await syncUtils.loadUser(syncUserSelect.value);
-            switchView('list');
-            setSyncStatus(`読み込みました: ${user.userName}`);
-        } catch (err) {
-            setSyncStatus(`読込失敗: ${err.message}`);
-        }
-    };
-
-    container.querySelector('#sync-load-schedule-btn').onclick = async () => {
-        try {
-            saveSyncInputs();
-            const sheetName = scheduleSheetInput.value.trim() || 'TimeMarkSchedule';
-            if (!confirm(`「${sheetName}」の予定表を読み込み、同じ日付の例外日設定を上書きしますか？`)) return;
-            setSyncStatus('予定表を読み込み中...');
-            const entries = await syncUtils.loadSchedule(sheetName);
-            entries.forEach(({ date, hours }) => {
-                state.customDates[date] = hours;
-            });
-            storage.save();
-            setSyncStatus(`${entries.length}日分の予定表を読み込みました`);
-        } catch (err) {
-            setSyncStatus(`予定表の読込失敗: ${err.message}`);
-        }
-    };
 
     container.querySelector('#export-backup-btn').onclick = () => {
         backupUtils.downloadBackup();

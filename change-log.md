@@ -8,3 +8,5 @@
 - ユーザー所有の新しいTimeMarkスプレッドシート／Apps Scriptへ同期先を移行。旧既定URLを保存済みの端末も、新しい同期先へ自動で切り替える。
 - Web公開に依存しないパッケージアプリ化の基盤として、Tauri 2のmacOS／iOS／Android／Windows対応プロジェクトを追加。画面資産をアプリに同梱し、パッケージ版ではService Workerを使わない構成へ変更。
 - macOSパッケージ設定へTimeMarkアイコンを明示的に登録し、`TimeMark.app` とDMGへ `icon.icns` を同梱するよう修正。
+- 利用者向けのApps Script同期設定を廃止し、iPhone／iPad／Macアプリ内のGoogle OAuthとSheets APIで、各利用者が自分用のTimeMarkシートを作成・保存・読込できる構成へ変更。JSONの端末内移行は継続。
+- Googleのアクセストークンはメモリ内だけで扱い、通常の端末保存領域へ残さない。iOSのOAuthコールバックURLとTauriの認可セッション権限を追加。

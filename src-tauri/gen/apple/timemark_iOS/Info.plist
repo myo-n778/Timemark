@@ -18,6 +18,17 @@
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
 	<string>0.1.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>jp.myon778.timemark.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.281403148439-oejntdlhvf9f0ihq2bg5k9oeb0dm70g2</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
