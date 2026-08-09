@@ -32,3 +32,4 @@
 - Windows GitHub Actionsを追加し、mainへの関連変更時にWindows向けMSI・EXEを自動ビルドして、30日間のビルド成果物として保持するようにした。
 - iOSプロジェクトに残っていたTauri標準アイコンを、TimeMarkの時計アイコンへビルド時に自動同期するよう修正した。
 - Xcodeを単独起動した際の開発連携エラーを避けるため、Tauri経由でiOS開発を開始する `tauri:ios:dev` コマンドを追加した。
+- TestFlight準備でXcodeのArchiveを使う場合に、Tauri連携を保ったまま開く `tauri:ios:xcode` コマンドを追加した。
