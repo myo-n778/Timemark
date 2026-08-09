@@ -2,9 +2,10 @@
 
 ## 提供形態
 
-- TimeMarkは端末内へ画面・計算・データ形式を同梱するパッケージアプリとして提供する。最初の配布対象はiPhone、iPad、Macで、同じコード基盤からAndroidとWindowsにも展開する。
+- TimeMarkは端末内へ画面・計算・データ形式を同梱するパッケージアプリとして提供する。最初の配布対象はiPhone、iPad、Macで、同じコード基盤からAndroidとWindowsにも展開する。Androidはarm64向けの署名なしAPK・AABをローカル生成できる。
 - アプリの起動・端末内保存・JSONのインポート／エクスポートはWeb公開やGitHub Pagesに依存しない。
 - PWAファイルはブラウザ用フォールバックとして残すが、パッケージアプリではService Workerを登録しない。
+- Androidネイティブプロジェクトは `src-tauri/gen/android` を正本として含める。再生成は `npm run tauri:android:init`、配布用ビルドはJava 21とAndroid SDKを設定した環境で `npm run tauri:android:build` を使う。
 
 ## データ
 
