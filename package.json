@@ -10,6 +10,7 @@
     "tauri:dev": "npm run prepare:desktop && tauri dev",
     "tauri:build": "npm run prepare:desktop && tauri build",
     "tauri:ios:init": "npm run prepare:desktop && tauri ios init",
+    "tauri:ios:dev": "npm run prepare:desktop && tauri ios dev --open",
     "tauri:ios:build": "npm run prepare:desktop && tauri ios build",
     "tauri:android:init": "npm run prepare:desktop && tauri android init",
     "tauri:android:build": "npm run prepare:desktop && tauri android build --apk --aab --target aarch64"

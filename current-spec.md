@@ -8,6 +8,7 @@
 - Androidネイティブプロジェクトは `src-tauri/gen/android` を正本として含める。再生成は `npm run tauri:android:init`、配布用ビルドはJava 21とAndroid SDKを設定した環境で `npm run tauri:android:build` を使う。
 - WindowsのMSI／EXEはWindows GitHub Actionsで自動生成し、公開Webサイトではなくビルド成果物として30日間保持する。コード署名は未設定のため、配布前には署名設定を別途行う。
 - iPhone／iPadのアプリアイコンは `src-tauri/icons/ios` を正本とし、iOSアプリプロジェクトの `AppIcon.appiconset` へパッケージ準備時に自動同期する。
+- XcodeでのiPhone／iPad開発実行は、Tauriの開発連携を起動する `npm run tauri:ios:dev` から行う。生成済みの `.xcodeproj` を単独で実行すると開発連携サーバーがないため、Build Rust Codeが失敗する。TestFlight用アーカイブ作成には `npm run tauri:ios:build` を使う。
 
 ## データ
 

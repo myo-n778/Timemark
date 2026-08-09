@@ -31,3 +31,4 @@
 - Androidネイティブプロジェクトを追加し、arm64向けの署名なしAPK・AABをローカル生成できるようにした。初回ビルドに必要なAndroid SDK、NDK、Java 21の組み合わせを確認した。
 - Windows GitHub Actionsを追加し、mainへの関連変更時にWindows向けMSI・EXEを自動ビルドして、30日間のビルド成果物として保持するようにした。
 - iOSプロジェクトに残っていたTauri標準アイコンを、TimeMarkの時計アイコンへビルド時に自動同期するよう修正した。
+- Xcodeを単独起動した際の開発連携エラーを避けるため、Tauri経由でiOS開発を開始する `tauri:ios:dev` コマンドを追加した。

@@ -27,3 +27,4 @@
 - Androidのarm64リリースビルドで、署名なしAPKとAABが生成され、各ZIP形式の整合性検査を通る。
 - Windows GitHub ActionsでMSIとEXEの生成・成果物アップロードが成功する。Windows実機での起動確認とコード署名は別途行う。
 - iPhone／iPad用アーカイブのAppIconが `src-tauri/icons/ios` の時計アイコンと一致する。
+- iOS開発実行は `npm run tauri:ios:dev` から開始し、Build Rust Codeの開発連携が接続できる。
