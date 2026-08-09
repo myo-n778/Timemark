@@ -29,3 +29,4 @@
 - iPhone／iPad用アーカイブのAppIconが `src-tauri/icons/ios` の時計アイコンと一致する。
 - iOS開発実行は `npm run tauri:ios:dev` から開始し、Build Rust Codeの開発連携が接続できる。
 - `npm run tauri:ios:xcode` で開いたXcodeからのArchiveが成功する。
+- iOS配布IPAはiOS 15以降を対象とし、`ITSAppUsesNonExemptEncryption=false`、Apple Distribution署名、`beta-reports-active=true` を確認する。IPA内に `libapp.a` を同梱しない。

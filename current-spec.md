@@ -9,6 +9,7 @@
 - WindowsのMSI／EXEはWindows GitHub Actionsで自動生成し、公開Webサイトではなくビルド成果物として30日間保持する。コード署名は未設定のため、配布前には署名設定を別途行う。
 - iPhone／iPadのアプリアイコンは `src-tauri/icons/ios` を正本とし、iOSアプリプロジェクトの `AppIcon.appiconset` へパッケージ準備時に自動同期する。
 - XcodeでのiPhone／iPad開発実行は、Tauriの開発連携を起動する `npm run tauri:ios:dev` から行う。生成済みの `.xcodeproj` を単独で実行すると開発連携サーバーがないため、Build Rust Codeが失敗する。XcodeのArchiveを使う場合は、先に `npm run tauri:ios:xcode` で連携付きのXcodeを開く。TestFlight用アーカイブ作成には `npm run tauri:ios:build` を使う。
+- iPhone／iPad版はiOS 15以降を対象とする。Google同期を含むHTTPS通信はApple OS標準のTLSを使用し、配布用Info.plistには `ITSAppUsesNonExemptEncryption=false` を明記する。これにより、独自暗号化の申告を必要としない。
 
 ## データ
 
