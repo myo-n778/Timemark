@@ -65,7 +65,8 @@ const state = {
         showArchived: false
     },
     overviewSettings: {
-        baseDate: toLocalDateString(new Date())
+        baseDate: toLocalDateString(new Date()),
+        endDate: ''
     },
     uiSettings: {
         displayScale: 1
@@ -140,7 +141,9 @@ const storage = {
             };
             state.overviewSettings = {
                 baseDate: /^\d{4}-\d{2}-\d{2}$/.test(parsed.overviewSettings?.baseDate || '')
-                    ? parsed.overviewSettings.baseDate : toLocalDateString(new Date())
+                    ? parsed.overviewSettings.baseDate : toLocalDateString(new Date()),
+                endDate: /^\d{4}-\d{2}-\d{2}$/.test(parsed.overviewSettings?.endDate || '')
+                    ? parsed.overviewSettings.endDate : ''
             };
             state.uiSettings = {
                 displayScale: [0.9, 1, 1.1, 1.2].includes(Number(parsed.uiSettings?.displayScale))
@@ -252,7 +255,9 @@ const backupUtils = {
         };
         state.overviewSettings = {
             baseDate: /^\d{4}-\d{2}-\d{2}$/.test(payload.overviewSettings?.baseDate || '')
-                ? payload.overviewSettings.baseDate : toLocalDateString(new Date())
+                ? payload.overviewSettings.baseDate : toLocalDateString(new Date()),
+            endDate: /^\d{4}-\d{2}-\d{2}$/.test(payload.overviewSettings?.endDate || '')
+                ? payload.overviewSettings.endDate : ''
         };
         state.uiSettings = {
             displayScale: [0.9, 1, 1.1, 1.2].includes(Number(payload.uiSettings?.displayScale))
@@ -602,14 +607,15 @@ function renderLearningOverview() {
     const studyTargets = getDisplayedTargets().filter(target => target.type === 'study');
     const latestTarget = studyTargets.reduce((latest, target) =>
         !latest || target.targetDate > latest.targetDate ? target : latest, null);
-    const totalHours = latestTarget ? timeUtils.calcTotalHours(baseDate, new Date(`${latestTarget.targetDate}T00:00:00`)) : 0;
+    const effectiveEndDate = state.overviewSettings.endDate || latestTarget?.targetDate || '';
+    const totalHours = effectiveEndDate ? timeUtils.calcTotalHours(baseDate, new Date(`${effectiveEndDate}T00:00:00`)) : 0;
 
     return `
         <section class="learning-overview card" aria-label="全体の学習時間">
             <div class="learning-overview-header">
                 <div>
                     <h2>全体の学習時間</h2>
-                    <p>基準日から${latestTarget ? ` ${latestTarget.targetDate} まで` : ' 学習ターゲット未設定'}</p>
+                    <p>基準日から${effectiveEndDate ? ` ${effectiveEndDate} まで` : ' 集計終了日未設定'}</p>
                 </div>
                 <div class="display-size-controls" aria-label="表示サイズ">
                     <button class="display-size-button" id="display-size-down" aria-label="表示を小さくする" ${state.uiSettings.displayScale === 0.9 ? 'disabled' : ''}>−</button>
@@ -619,6 +625,9 @@ function renderLearningOverview() {
             <div class="learning-overview-controls">
                 <label>基準日
                     <input type="date" id="overview-base-date" value="${state.overviewSettings.baseDate}">
+                </label>
+                <label>いつまで
+                    <input type="date" id="overview-end-date" value="${state.overviewSettings.endDate}">
                 </label>
             </div>
             <div class="learning-overview-values">
@@ -634,6 +643,14 @@ function bindLearningOverview(container) {
     if (baseDateInput) {
         baseDateInput.onchange = () => {
             state.overviewSettings.baseDate = baseDateInput.value || toLocalDateString(new Date());
+            storage.save();
+            renderList();
+        };
+    }
+    const endDateInput = container.querySelector('#overview-end-date');
+    if (endDateInput) {
+        endDateInput.onchange = () => {
+            state.overviewSettings.endDate = endDateInput.value || '';
             storage.save();
             renderList();
         };
@@ -1540,17 +1557,28 @@ function renderList() {
         <details class="archive-panel">
             <summary>アーカイブ　${archivedTargets.length}件</summary>
             <div class="archive-list">
-                ${archivedTargets.map(target => `
-                    <div class="target-item archived-list-item" data-id="${target.id}">
-                        <div class="target-info">
-                            <div class="target-type-badge">${target.type.toUpperCase()}</div>
-                            <div class="target-archive-badge">ARCHIVED</div>
-                            <div class="target-name" style="color: ${target.color}">${target.name}</div>
-                            <div class="target-sub">${target.targetDate}まで</div>
+                ${archivedTargets.map(target => {
+                    const targetDate = new Date(target.targetDate);
+                    const remainingDays = timeUtils.calcCalendarDays(today, targetDate);
+                    const availableHours = target.type === 'study' ? timeUtils.calcTotalHours(today, targetDate) : null;
+                    return `
+                        <div class="target-item archived-list-item" data-id="${target.id}">
+                            <div class="target-info">
+                                <div class="target-type-badge">${target.type.toUpperCase()}</div>
+                                <div class="target-archive-badge">ARCHIVED</div>
+                                <div class="target-name" style="color: ${target.color}">${target.name}</div>
+                                <div class="target-sub">${target.type === 'study' ? '暦日数計 / 総可処分時間' : '全日数カウント'}</div>
+                            </div>
+                            <div class="archive-target-actions">
+                                <div class="target-countdown">
+                                    <div class="countdown-days glow-text" style="color: ${target.color}"><small>あと</small> ${remainingDays} <small>日</small></div>
+                                    ${availableHours !== null ? `<div class="countdown-hours">${availableHours}h</div>` : ''}
+                                </div>
+                                <button class="btn btn-ghost btn-sm" data-restore-target="${target.id}">復元</button>
+                            </div>
                         </div>
-                        <button class="btn btn-ghost btn-sm" data-restore-target="${target.id}">復元</button>
-                    </div>
-                `).join('')}
+                    `;
+                }).join('')}
             </div>
         </details>
     `;
@@ -2047,7 +2075,7 @@ function renderRoad() {
 
         const totalDays = timeUtils.calcCalendarDays(start, end);
         const elapsed = timeUtils.calcCalendarDays(start, today);
-        const remaining = Math.max(0, totalDays - elapsed);
+        const remaining = totalDays - elapsed;
 
         // 比率計算関数 (0% to 100%)
         const getPos = (date) => {
@@ -2156,16 +2184,36 @@ function renderRoad() {
             <details class="archive-panel road-archive-panel">
                 <summary>アーカイブ　${archivedTargets.length}件</summary>
                 <div class="archive-list">
-                    ${archivedTargets.map(target => `
-                        <div class="archive-road-item" data-id="${target.id}">
-                            <div>
-                                <span class="target-archive-badge">ARCHIVED</span>
-                                <div class="road-target-name" style="color: ${target.color}">${target.name}</div>
-                                <div class="target-sub">${target.targetDate}まで</div>
+                    ${archivedTargets.map(target => {
+                        const start = timeUtils.startOfDay(new Date(target.startDate || target.createdAt || Date.now()));
+                        const end = timeUtils.startOfDay(new Date(target.targetDate));
+                        const totalDays = timeUtils.calcCalendarDays(start, end);
+                        const elapsed = timeUtils.calcCalendarDays(start, today);
+                        const remaining = totalDays - elapsed;
+                        const todayPos = totalDays <= 0 ? 100 : Math.min(100, Math.max(0, (elapsed / totalDays) * 100));
+                        return `
+                            <div class="archive-road-item" data-id="${target.id}">
+                                <div class="archive-road-header">
+                                    <div>
+                                        <span class="target-archive-badge">ARCHIVED</span>
+                                        <div class="road-target-name" style="color: ${target.color}">${target.name}</div>
+                                    </div>
+                                    <div class="archive-target-actions">
+                                        <div class="road-countdown-badge"><span>あと</span><span style="color: ${target.color}; font-size: 1.1rem; margin: 0 4px;">${remaining}</span><span>日</span></div>
+                                        <button class="btn btn-ghost btn-sm" data-restore-target="${target.id}">復元</button>
+                                    </div>
+                                </div>
+                                <div class="road-scroller">
+                                    <div class="road-container">
+                                        <div class="road-bar"></div>
+                                        <div class="road-marker" style="left: 0%;"><div class="marker-label">START</div><div class="marker-dot"></div><div class="marker-date">${start.getMonth() + 1}/${start.getDate()}</div></div>
+                                        <div class="road-marker marker-today" style="left: ${todayPos}%;"><div class="marker-label">TODAY</div><div class="marker-remaining">あと${remaining}日</div></div>
+                                        <div class="road-marker" style="left: 100%;"><div class="marker-label">GOAL</div><div class="marker-dot"></div><div class="marker-date">${end.getMonth() + 1}/${end.getDate()}</div></div>
+                                    </div>
+                                </div>
                             </div>
-                            <button class="btn btn-ghost btn-sm" data-restore-target="${target.id}">復元</button>
-                        </div>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </div>
             </details>
         `;

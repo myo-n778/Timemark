@@ -379,7 +379,8 @@ main {
 
 .learning-overview-header,
 .learning-overview-values,
-.archive-road-item {
+.archive-road-header,
+.archive-target-actions {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -394,6 +395,12 @@ main {
 .learning-overview-controls label {
     color: var(--text-sub);
     font-size: 12px;
+}
+
+.learning-overview-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
 }
 
 .display-size-controls {
@@ -488,6 +495,10 @@ main {
 .archived-list-item {
     cursor: default;
     opacity: 0.82;
+}
+
+.archive-target-actions {
+    justify-content: flex-end;
 }
 
 .road-archive-panel {
