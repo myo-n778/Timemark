@@ -6,6 +6,7 @@
 - アプリの起動・端末内保存・JSONのインポート／エクスポートはWeb公開やGitHub Pagesに依存しない。
 - PWAファイルはブラウザ用フォールバックとして残すが、パッケージアプリではService Workerを登録しない。
 - Androidネイティブプロジェクトは `src-tauri/gen/android` を正本として含める。再生成は `npm run tauri:android:init`、配布用ビルドはJava 21とAndroid SDKを設定した環境で `npm run tauri:android:build` を使う。
+- WindowsのMSI／EXEはWindows GitHub Actionsで自動生成し、公開Webサイトではなくビルド成果物として30日間保持する。コード署名は未設定のため、配布前には署名設定を別途行う。
 
 ## データ
 
