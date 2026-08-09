@@ -63,6 +63,12 @@ const state = {
     archiveSettings: {
         autoArchiveAfterDays: 0,
         showArchived: false
+    },
+    overviewSettings: {
+        baseDate: toLocalDateString(new Date())
+    },
+    uiSettings: {
+        displayScale: 1
     }
 };
 // target structure example:
@@ -112,7 +118,9 @@ const storage = {
             timePeriods: state.timePeriods,
             schoolEvents: state.schoolEvents,
             schoolVacationDates: state.schoolVacationDates,
-            archiveSettings: state.archiveSettings
+            archiveSettings: state.archiveSettings,
+            overviewSettings: state.overviewSettings,
+            uiSettings: state.uiSettings
         }));
     },
     load: () => {
@@ -129,6 +137,14 @@ const storage = {
                 autoArchiveAfterDays: [0, 1, 7, 30].includes(Number(parsed.archiveSettings?.autoArchiveAfterDays))
                     ? Number(parsed.archiveSettings.autoArchiveAfterDays) : 0,
                 showArchived: parsed.archiveSettings?.showArchived === true
+            };
+            state.overviewSettings = {
+                baseDate: /^\d{4}-\d{2}-\d{2}$/.test(parsed.overviewSettings?.baseDate || '')
+                    ? parsed.overviewSettings.baseDate : toLocalDateString(new Date())
+            };
+            state.uiSettings = {
+                displayScale: [0.9, 1, 1.1, 1.2].includes(Number(parsed.uiSettings?.displayScale))
+                    ? Number(parsed.uiSettings.displayScale) : 1
             };
 
             // Migration: if customDates is empty but exclusionDates exists
@@ -183,7 +199,9 @@ const backupUtils = {
             timePeriods: state.timePeriods,
             schoolEvents: state.schoolEvents,
             schoolVacationDates: state.schoolVacationDates,
-            archiveSettings: state.archiveSettings
+            archiveSettings: state.archiveSettings,
+            overviewSettings: state.overviewSettings,
+            uiSettings: state.uiSettings
         };
 
         return {
@@ -232,6 +250,15 @@ const backupUtils = {
                 ? Number(payload.archiveSettings.autoArchiveAfterDays) : 0,
             showArchived: payload.archiveSettings?.showArchived === true
         };
+        state.overviewSettings = {
+            baseDate: /^\d{4}-\d{2}-\d{2}$/.test(payload.overviewSettings?.baseDate || '')
+                ? payload.overviewSettings.baseDate : toLocalDateString(new Date())
+        };
+        state.uiSettings = {
+            displayScale: [0.9, 1, 1.1, 1.2].includes(Number(payload.uiSettings?.displayScale))
+                ? Number(payload.uiSettings.displayScale) : 1
+        };
+        applyDisplayScale();
         storage.save();
 
         const keysToRemove = [];
@@ -548,12 +575,71 @@ function archiveActionLabel(target) {
 }
 
 function getDisplayedTargets() {
-    const activeTargets = state.targets.filter(target => !isTargetArchived(target));
-    if (!state.archiveSettings.showArchived) return activeTargets;
-    const archivedTargets = state.targets.filter(target => isTargetArchived(target));
-    // Even when archives are visible, keep current/future work in the first
-    // block and place completed archives below it.
-    return [...activeTargets, ...archivedTargets];
+    return state.targets.filter(target => !isTargetArchived(target));
+}
+
+function getArchivedTargets() {
+    return state.targets.filter(target => isTargetArchived(target));
+}
+
+function applyDisplayScale() {
+    document.documentElement.style.setProperty('--ui-scale', String(state.uiSettings.displayScale));
+}
+
+function changeDisplayScale(delta) {
+    const options = [0.9, 1, 1.1, 1.2];
+    const currentIndex = options.indexOf(state.uiSettings.displayScale);
+    const nextIndex = Math.max(0, Math.min(options.length - 1, currentIndex + delta));
+    if (nextIndex === currentIndex) return;
+    state.uiSettings.displayScale = options[nextIndex];
+    applyDisplayScale();
+    storage.save();
+    switchView(state.currentView);
+}
+
+function renderLearningOverview() {
+    const baseDate = new Date(`${state.overviewSettings.baseDate}T00:00:00`);
+    const studyTargets = getDisplayedTargets().filter(target => target.type === 'study');
+    const latestTarget = studyTargets.reduce((latest, target) =>
+        !latest || target.targetDate > latest.targetDate ? target : latest, null);
+    const totalHours = latestTarget ? timeUtils.calcTotalHours(baseDate, new Date(`${latestTarget.targetDate}T00:00:00`)) : 0;
+
+    return `
+        <section class="learning-overview card" aria-label="全体の学習時間">
+            <div class="learning-overview-header">
+                <div>
+                    <h2>全体の学習時間</h2>
+                    <p>基準日から${latestTarget ? ` ${latestTarget.targetDate} まで` : ' 学習ターゲット未設定'}</p>
+                </div>
+                <div class="display-size-controls" aria-label="表示サイズ">
+                    <button class="display-size-button" id="display-size-down" aria-label="表示を小さくする" ${state.uiSettings.displayScale === 0.9 ? 'disabled' : ''}>−</button>
+                    <button class="display-size-button" id="display-size-up" aria-label="表示を大きくする" ${state.uiSettings.displayScale === 1.2 ? 'disabled' : ''}>＋</button>
+                </div>
+            </div>
+            <div class="learning-overview-controls">
+                <label>基準日
+                    <input type="date" id="overview-base-date" value="${state.overviewSettings.baseDate}">
+                </label>
+            </div>
+            <div class="learning-overview-values">
+                <div><span>可処分時間</span><strong>${totalHours}h</strong></div>
+                <div><span>学習ターゲット</span><strong>${studyTargets.length}件</strong></div>
+            </div>
+        </section>
+    `;
+}
+
+function bindLearningOverview(container) {
+    const baseDateInput = container.querySelector('#overview-base-date');
+    if (baseDateInput) {
+        baseDateInput.onchange = () => {
+            state.overviewSettings.baseDate = baseDateInput.value || toLocalDateString(new Date());
+            storage.save();
+            renderList();
+        };
+    }
+    container.querySelector('#display-size-down')?.addEventListener('click', () => changeDisplayScale(-1));
+    container.querySelector('#display-size-up')?.addEventListener('click', () => changeDisplayScale(1));
 }
 
 function reorderDisplayedTargets(reorderedTargets) {
@@ -611,11 +697,7 @@ function renderSettings() {
                     <option value="30" ${state.archiveSettings.autoArchiveAfterDays === 30 ? 'selected' : ''}>完了後1か月</option>
                 </select>
             </label>
-            <label class="archive-setting-row archive-show-toggle">
-                <span>アーカイブ済みをLIST／Time Roadにも表示する</span>
-                <input type="checkbox" id="show-archived-toggle" ${state.archiveSettings.showArchived ? 'checked' : ''}>
-            </label>
-            <p class="sync-help">個別アーカイブは、LISTのターゲットを右クリック（Mac）または長押し（iPhone）して開く「ターゲット編集」から切り替えられます。アーカイブしてもデータは削除されません。</p>
+            <p class="sync-help">個別アーカイブは、LISTのターゲットを右クリック（Mac）または長押し（iPhone）して開く「ターゲット編集」から切り替えられます。アーカイブ済みはLISTとTime Roadの最下部にある「アーカイブ」から確認・復元できます。データは削除されません。</p>
         </section>
         
         <section class="settings-section">
@@ -723,7 +805,8 @@ function renderSettings() {
                 <h2>Googleスプレッドシート接続</h2>
                 <span class="sync-status">${googleSyncConfig.spreadsheetId ? '設定済み' : '未設定'}</span>
             </div>
-            <p class="sync-help">GASの設定は不要です。初回だけ、ここから自分用のシートを作成するか、既存のシートを接続します。</p>
+            <div class="sync-actions"><button class="btn btn-primary btn-sm" id="google-sign-in-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>Googleに接続</button></div>
+            <p class="sync-help">GASの設定は不要です。Googleに接続してから、自分用のシートを作成するか、既存のシートを接続します。</p>
             <details class="settings-details" ${googleSyncConfig.spreadsheetId ? '' : 'open'}>
                 <summary>シートを作成・接続・管理</summary>
                 <div class="sync-grid">
@@ -733,7 +816,6 @@ function renderSettings() {
                     </label>
                 </div>
                 <div class="sync-actions">
-                    <button class="btn btn-ghost btn-sm" id="google-sign-in-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>Googleに接続</button>
                     <button class="btn btn-primary btn-sm" id="google-create-sheet-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>新しいTimeMarkシートを作成</button>
                     <button class="btn btn-ghost btn-sm" id="google-connect-sheet-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>作成済みシートを接続</button>
                     <button class="btn btn-ghost btn-sm" id="google-open-sheet-btn" ${nativeGoogleSyncAvailable && googleSyncConfig.spreadsheetUrl ? '' : 'disabled'}>シートを開く</button>
@@ -787,12 +869,6 @@ function renderSettings() {
 
     container.querySelector('#auto-archive-after-select').onchange = (event) => {
         state.archiveSettings.autoArchiveAfterDays = Number(event.target.value);
-        storage.save();
-        renderSettings();
-    };
-
-    container.querySelector('#show-archived-toggle').onchange = (event) => {
-        state.archiveSettings.showArchived = event.target.checked;
         storage.save();
         renderSettings();
     };
@@ -1400,19 +1476,20 @@ function renderList() {
     const listContainer = document.getElementById('target-list');
     if (!listContainer) return;
     const displayedTargets = getDisplayedTargets();
+    const archivedTargets = getArchivedTargets();
 
-    if (displayedTargets.length === 0) {
-        listContainer.innerHTML = `
+    if (displayedTargets.length === 0 && archivedTargets.length === 0) {
+        listContainer.innerHTML = `${renderLearningOverview()}
             <div class="empty-state">
-                <p>${state.targets.length === 0 ? 'ターゲットがありません。<br>右下の「＋」から追加してください。' : '表示するターゲットはありません。<br>設定からアーカイブ済みを表示できます。'}</p>
-            </div>
-        `;
+                <p>ターゲットがありません。<br>右下の「＋」から追加してください。</p>
+            </div>`;
+        bindLearningOverview(listContainer);
         return;
     }
 
     const today = new Date();
 
-    listContainer.innerHTML = displayedTargets.map((target, index) => {
+    const activeTargetsHtml = displayedTargets.map((target, index) => {
         const targetDate = new Date(target.targetDate);
         const calDays = timeUtils.calcCalendarDays(today, targetDate);
 
@@ -1445,7 +1522,6 @@ function renderList() {
                     </div>
                     <div class="target-info">
                         <div class="target-type-badge">${target.type.toUpperCase()}</div>
-                        ${isTargetArchived(target) ? '<div class="target-archive-badge">ARCHIVED</div>' : ''}
                         <div class="target-name" style="color: ${target.color}">${target.name}</div>
                         <div class="target-sub">${subDisplay}</div>
                     </div>
@@ -1460,9 +1536,47 @@ function renderList() {
         `;
     }).join('');
 
+    const archivedTargetsHtml = archivedTargets.length === 0 ? '' : `
+        <details class="archive-panel">
+            <summary>アーカイブ　${archivedTargets.length}件</summary>
+            <div class="archive-list">
+                ${archivedTargets.map(target => `
+                    <div class="target-item archived-list-item" data-id="${target.id}">
+                        <div class="target-info">
+                            <div class="target-type-badge">${target.type.toUpperCase()}</div>
+                            <div class="target-archive-badge">ARCHIVED</div>
+                            <div class="target-name" style="color: ${target.color}">${target.name}</div>
+                            <div class="target-sub">${target.targetDate}まで</div>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" data-restore-target="${target.id}">復元</button>
+                    </div>
+                `).join('')}
+            </div>
+        </details>
+    `;
+
+    listContainer.innerHTML = `${renderLearningOverview()}${displayedTargets.length === 0 ? '<div class="empty-state"><p>通常表示のターゲットはありません。</p></div>' : activeTargetsHtml}${archivedTargetsHtml}`;
+
     // Setup Drag and Drop
     setupDragging(listContainer);
     bindOrderStepButtons(listContainer, renderList);
+    bindLearningOverview(listContainer);
+    bindArchiveRestoreButtons(listContainer, renderList);
+}
+
+function bindArchiveRestoreButtons(container, renderCurrentView) {
+    container.querySelectorAll('[data-restore-target]').forEach(button => {
+        button.onclick = async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const target = state.targets.find(item => item.id === button.dataset.restoreTarget);
+            if (!target || !await confirmInApp('このターゲットを通常表示へ戻しますか？')) return;
+            target.archived = false;
+            target.archiveOverride = true;
+            storage.save();
+            renderCurrentView();
+        };
+    });
 }
 
 function moveTargetByStep(targetId, direction) {
@@ -1557,11 +1671,15 @@ function setupDragging(container) {
         if (!draggingItem) return;
         const afterElement = getDragAfterElement(container, clientY);
         if (afterElement) container.insertBefore(draggingItem, afterElement);
-        else container.appendChild(draggingItem);
+        else {
+            const archivePanel = container.querySelector('.archive-panel');
+            if (archivePanel) container.insertBefore(draggingItem, archivePanel);
+            else container.appendChild(draggingItem);
+        }
     };
     const autoScroller = createDragAutoScroller(moveItem);
 
-    container.querySelectorAll('.target-item').forEach(item => {
+    container.querySelectorAll('.target-item:not(.archived-list-item)').forEach(item => {
         let longPressTimer = null;
         let longPressTriggered = false;
         let touchStartX = 0;
@@ -1586,7 +1704,7 @@ function setupDragging(container) {
             draggingItem = null;
             autoScroller.stop();
 
-            saveTargetOrder(container, '.target-item');
+            saveTargetOrder(container, '.target-item:not(.archived-list-item)');
         });
 
         item.addEventListener('dragover', (e) => {
@@ -1636,7 +1754,7 @@ function setupDragging(container) {
                 draggingItem = null;
                 handleDragging = false;
                 autoScroller.stop();
-                saveTargetOrder(container, '.target-item');
+                saveTargetOrder(container, '.target-item:not(.archived-list-item)');
             };
             dragHandle.addEventListener('touchstart', (event) => {
                 if (event.touches.length !== 1) return;
@@ -1802,7 +1920,7 @@ function showEditTargetModal(targetId) {
 }
 
 function getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.target-item:not(.dragging)')];
+    const draggableElements = [...container.querySelectorAll('.target-item:not(.archived-list-item):not(.dragging)')];
     return draggableElements.reduce((closest, child) => {
         const box = child.getBoundingClientRect();
         const offset = y - box.top - box.height / 2;
@@ -1913,9 +2031,10 @@ function renderRoad() {
     const roadContainer = document.getElementById('road-view');
     if (!roadContainer) return;
     const displayedTargets = getDisplayedTargets();
+    const archivedTargets = getArchivedTargets();
 
-    if (displayedTargets.length === 0) {
-        roadContainer.innerHTML = `<h1 class="glow-text">Time Road</h1><div class="empty-state">${state.targets.length === 0 ? 'ターゲットがありません。' : '表示するターゲットはありません。設定からアーカイブ済みを表示できます。'}</div>`;
+    if (displayedTargets.length === 0 && archivedTargets.length === 0) {
+        roadContainer.innerHTML = '<h1 class="glow-text">Time Road</h1><div class="empty-state">ターゲットがありません。</div>';
         return;
     }
 
@@ -2028,9 +2147,34 @@ function renderRoad() {
 
     });
 
+    if (displayedTargets.length === 0) {
+        roadHtml += '<div class="empty-state">通常表示のターゲットはありません。</div>';
+    }
+
+    if (archivedTargets.length > 0) {
+        roadHtml += `
+            <details class="archive-panel road-archive-panel">
+                <summary>アーカイブ　${archivedTargets.length}件</summary>
+                <div class="archive-list">
+                    ${archivedTargets.map(target => `
+                        <div class="archive-road-item" data-id="${target.id}">
+                            <div>
+                                <span class="target-archive-badge">ARCHIVED</span>
+                                <div class="road-target-name" style="color: ${target.color}">${target.name}</div>
+                                <div class="target-sub">${target.targetDate}まで</div>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" data-restore-target="${target.id}">復元</button>
+                        </div>
+                    `).join('')}
+                </div>
+            </details>
+        `;
+    }
+
     roadContainer.innerHTML = roadHtml;
     setupRoadDragging(roadContainer);
     bindOrderStepButtons(roadContainer, renderRoad);
+    bindArchiveRestoreButtons(roadContainer, renderRoad);
 }
 
 
@@ -2176,6 +2320,7 @@ window.showAddTargetModal = showAddTargetModal;
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
     storage.load();
+    applyDisplayScale();
     await storage.loadHolidays();
     initStars();
 
