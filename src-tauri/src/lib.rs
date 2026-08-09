@@ -1,6 +1,15 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+#[cfg(target_os = "ios")]
+use objc2::MainThreadMarker;
+#[cfg(target_os = "ios")]
+use objc2::runtime::AnyObject;
+#[cfg(target_os = "ios")]
+use objc2_foundation::{NSDictionary, NSString, NSURL};
+#[cfg(target_os = "ios")]
+use objc2_ui_kit::{UIApplication, UIApplicationOpenExternalURLOptionsKey};
+
 const SHEETS_API: &str = "https://sheets.googleapis.com/v4/spreadsheets";
 
 #[derive(Serialize)]
@@ -18,11 +27,24 @@ struct ScheduleEntry {
     note: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SchoolEvent {
+    date: String,
+    grade: String,
+    category: String,
+    title: String,
+    source: String,
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TokenResponse {
+    #[serde(rename(serialize = "accessToken", deserialize = "access_token"))]
     access_token: String,
+    #[serde(rename(serialize = "expiresIn", deserialize = "expires_in"))]
     expires_in: u64,
+    #[serde(rename(serialize = "idToken", deserialize = "id_token"))]
     id_token: Option<String>,
 }
 
@@ -84,7 +106,9 @@ async fn create_timemark_sheet(access_token: String) -> Result<CreatedSpreadshee
                 "properties": { "title": "TimeMark" },
                 "sheets": [
                     { "properties": { "title": "TimeMarkData" } },
-                    { "properties": { "title": "TimeMarkSchedule" } }
+                    { "properties": { "title": "TimeMarkSchedule" } },
+                    { "properties": { "title": "SchoolEvents" } },
+                    { "properties": { "title": "SchoolEventsExample" } }
                 ]
             })),
     )
@@ -108,7 +132,14 @@ async fn create_timemark_sheet(access_token: String) -> Result<CreatedSpreadshee
                 "valueInputOption": "RAW",
                 "data": [
                     { "range": "TimeMarkData!A1:B1", "values": [["key", "value"]] },
-                    { "range": "TimeMarkSchedule!A1:C1", "values": [["date", "hours", "note"]] }
+                    { "range": "TimeMarkSchedule!A1:C1", "values": [["date", "hours", "note"]] },
+                    { "range": "SchoolEvents!A1:E1", "values": [["date", "grade", "category", "title", "source"]] },
+                    { "range": "SchoolEventsExample!A1:E4", "values": [
+                        ["date", "grade", "category", "title", "source"],
+                        ["2026/04/09", "m1", "term", "始業式", "記載例"],
+                        ["2026/04/25", "m1", "vacation", "土曜休日", "記載例"],
+                        ["2026/06/05", "m1", "exam", "定期試験", "記載例"]
+                    ] }
                 ]
             })),
     )
@@ -183,6 +214,93 @@ async fn load_timemark_schedule(
     Ok(entries)
 }
 
+fn normalize_sheet_date(value: &str) -> Option<String> {
+    let normalized = value.trim().replace('/', "-").replace('.', "-");
+    let mut parts = normalized.split('-');
+    let year = parts.next()?.parse::<u32>().ok()?;
+    let month = parts.next()?.parse::<u32>().ok()?;
+    let day = parts.next()?.parse::<u32>().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    Some(format!("{year:04}-{month:02}-{day:02}"))
+}
+
+#[tauri::command]
+async fn load_school_events(
+    access_token: String,
+    spreadsheet_id: String,
+) -> Result<Vec<SchoolEvent>, String> {
+    let values = match google_json(
+        reqwest::Client::new()
+            .get(format!("{}/{}/values/SchoolEvents!A1:E1000", SHEETS_API, spreadsheet_id))
+            .bearer_auth(access_token),
+    )
+    .await {
+        Ok(values) => values,
+        // An older TimeMark sheet can legitimately omit this optional tab.
+        Err(error) if error.contains("Unable to parse range") => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
+    let rows = values.get("values").and_then(Value::as_array).cloned().unwrap_or_default();
+    let entries = rows
+        .into_iter()
+        .skip(1)
+        .filter_map(|row| {
+            let cells = row.as_array()?;
+            let date = normalize_sheet_date(cells.first()?.as_str()?);
+            let grade = cells.get(1).and_then(Value::as_str).unwrap_or_default().trim().to_owned();
+            let category = cells.get(2).and_then(Value::as_str).unwrap_or_default().trim().to_owned();
+            let title = cells.get(3).and_then(Value::as_str).unwrap_or_default().trim().to_owned();
+            let source = cells.get(4).and_then(Value::as_str).unwrap_or_default().trim().to_owned();
+            let date = date?;
+            (!title.is_empty()).then_some(SchoolEvent { date, grade, category, title, source })
+        })
+        .collect();
+    Ok(entries)
+}
+
+#[tauri::command]
+fn open_timemark_sheet(_window: tauri::WebviewWindow, spreadsheet_url: String) -> Result<(), String> {
+    let url = tauri::Url::parse(&spreadsheet_url).map_err(|error| error.to_string())?;
+    if url.scheme() != "https" || url.host_str() != Some("docs.google.com") {
+        return Err("TimeMarkシートのGoogle URLだけを開けます".to_string());
+    }
+
+    #[cfg(target_os = "ios")]
+    {
+        let external_url = spreadsheet_url.clone();
+        _window
+            .run_on_main_thread(move || {
+                let marker = unsafe { MainThreadMarker::new_unchecked() };
+                let application = UIApplication::sharedApplication(marker);
+                let url_text = NSString::from_str(&external_url);
+                let url = NSURL::URLWithString(&url_text).expect("validated Google Sheets URL");
+                let options: objc2::rc::Retained<NSDictionary<UIApplicationOpenExternalURLOptionsKey, AnyObject>> =
+                    NSDictionary::new();
+                // This is the current UIKit API. It hands the URL to iOS rather
+                // than navigating the TimeMark webview itself.
+                unsafe {
+                    application.openURL_options_completionHandler(&url, &options, None);
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(spreadsheet_url)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+
+    #[allow(unreachable_code)]
+    Err("このOSでシートを外部アプリへ開く機能はまだ準備中です".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -192,7 +310,9 @@ pub fn run() {
             create_timemark_sheet,
             save_timemark_backup,
             load_timemark_backup,
-            load_timemark_schedule
+            load_timemark_schedule,
+            load_school_events,
+            open_timemark_sheet
         ])
         .run(tauri::generate_context!())
         .expect("TimeMark を起動できませんでした");

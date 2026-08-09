@@ -3,7 +3,7 @@
 // the app's normal local storage.
 
 const GOOGLE_AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
-const GOOGLE_SCOPE = 'openid email https://www.googleapis.com/auth/drive.file';
+const GOOGLE_SCOPE = 'openid email https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets.readonly';
 
 // OAuth client IDs are public application identifiers, not secrets.
 const CLIENTS = {
@@ -127,5 +127,9 @@ export const googleNativeSync = {
     loadSchedule: (spreadsheetId) => invoke('load_timemark_schedule', {
         accessToken: requireAccessToken(), spreadsheetId
     }),
+    loadSchoolEvents: (spreadsheetId) => invoke('load_school_events', {
+        accessToken: requireAccessToken(), spreadsheetId
+    }),
+    openSheet: (spreadsheetUrl) => invoke('open_timemark_sheet', { spreadsheetUrl }),
     disconnect: () => { session = null; }
 };

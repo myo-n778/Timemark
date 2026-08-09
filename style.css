@@ -79,6 +79,79 @@ body {
     box-shadow: var(--shadow-sm);
 }
 
+.school-events-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+}
+
+.school-events-table {
+    width: 100%;
+    min-width: 620px;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.school-events-table th,
+.school-events-table td {
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.school-events-table th {
+    color: var(--text-sub);
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.04);
+    white-space: nowrap;
+}
+
+.school-events-table tr:last-child td {
+    border-bottom: 0;
+}
+
+.school-event-category {
+    color: var(--secondary-color);
+    white-space: nowrap;
+}
+
+.archive-setting-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    margin: 10px 0;
+    color: var(--text-main);
+    font-size: 13px;
+}
+
+.archive-setting-row select {
+    max-width: 180px;
+    padding: 7px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    color: var(--text-main);
+    background: var(--surface-color);
+}
+
+.archive-show-toggle input {
+    inline-size: 19px;
+    block-size: 19px;
+    accent-color: var(--primary-color);
+}
+
+.target-archive-badge {
+    display: inline-block;
+    margin: 3px 0;
+    padding: 1px 6px;
+    border: 1px solid var(--text-sub);
+    border-radius: 8px;
+    color: var(--text-sub);
+    font-size: 9px;
+    letter-spacing: 0.07em;
+}
+
 /* Navigation */
 .app-nav {
     position: fixed;
@@ -108,10 +181,14 @@ body {
 }
 
 .target-item.dragging {
-    opacity: 0.5;
-    transform: scale(0.98);
-    border-style: dashed;
-    background: rgba(255, 255, 255, 0.1);
+    opacity: 0.9;
+    transform: translateY(-3px) scale(1.02);
+    border-style: solid;
+    border-color: var(--primary-color);
+    background: rgba(255, 255, 255, 0.14);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.38);
+    position: relative;
+    z-index: 10;
 }
 
 .drag-handle {
@@ -120,10 +197,51 @@ body {
     cursor: grab;
     display: flex;
     align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: rgba(255, 140, 0, 0.12);
+    touch-action: none;
+    -webkit-user-drag: none;
 }
 
 .drag-handle:active {
     cursor: grabbing;
+}
+
+.target-order-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-right: 10px;
+}
+
+.road-order-controls {
+    flex-direction: row;
+    margin-right: 0;
+}
+
+.order-step-btn {
+    width: 26px;
+    height: 22px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    color: var(--text-sub);
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 10px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.order-step-btn:hover:not(:disabled) {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.order-step-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
 }
 
 .nav-item {
@@ -502,6 +620,36 @@ main {
     color: var(--secondary-color);
 }
 
+.settings-intro {
+    margin: -8px 0 var(--spacing-lg);
+    color: var(--text-sub);
+    font-size: 13px;
+}
+
+.settings-details {
+    margin-top: var(--spacing-md);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.025);
+    padding: 0 var(--spacing-md);
+}
+
+.settings-details > summary {
+    padding: 12px 0;
+    color: var(--text-main);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.settings-details[open] > summary {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.settings-details > :last-child {
+    margin-bottom: var(--spacing-md);
+}
+
 .task-list {
     display: grid;
     gap: var(--spacing-md);
@@ -570,7 +718,45 @@ main {
 
 .road-item-container.dragging {
     cursor: grabbing;
-    opacity: 0.55;
+    opacity: 0.92;
+    transform: translateY(-3px) scale(1.015);
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.32);
+    position: relative;
+    z-index: 10;
+}
+
+.road-item-container [data-road-drag-handle] {
+    touch-action: none;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.road-drag-grip {
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
+    margin-right: 8px;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-sub);
+    background: rgba(255, 140, 0, 0.12);
+    border-radius: 10px;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.timemark-confirm-dialog {
+    width: min(440px, calc(100vw - 40px));
+    padding: 24px;
+}
+
+.timemark-confirm-dialog p {
+    margin: 12px 0 20px;
+    color: var(--text-main);
+    white-space: pre-wrap;
 }
 
 .road-target-name {

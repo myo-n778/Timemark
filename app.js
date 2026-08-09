@@ -3,6 +3,48 @@ import { googleNativeSync } from './native-google-sync.js';
 // --- Constants & Config ---
 const ROUND_STEP = 0.5;
 
+async function confirmInApp(prompt) {
+    return new Promise(resolve => {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay timemark-confirm-overlay';
+        modal.innerHTML = `
+            <div class="modal-content timemark-confirm-dialog" role="dialog" aria-modal="true" aria-label="確認">
+                <h2>確認</h2>
+                <p>${escapeHTML(prompt)}</p>
+                <div class="modal-actions">
+                    <button class="btn btn-ghost" data-confirm="false">キャンセル</button>
+                    <button class="btn btn-primary" data-confirm="true">続ける</button>
+                </div>
+            </div>`;
+        const finish = (answer) => {
+            modal.remove();
+            resolve(answer);
+        };
+        modal.querySelectorAll('[data-confirm]').forEach(button => {
+            button.onclick = () => finish(button.dataset.confirm === 'true');
+        });
+        document.body.appendChild(modal);
+    });
+}
+
+async function notifyInApp(text) {
+    return new Promise(resolve => {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay timemark-confirm-overlay';
+        modal.innerHTML = `
+            <div class="modal-content timemark-confirm-dialog" role="dialog" aria-modal="true" aria-label="お知らせ">
+                <h2>TimeMark</h2>
+                <p>${escapeHTML(text)}</p>
+                <div class="modal-actions"><button class="btn btn-primary">OK</button></div>
+            </div>`;
+        modal.querySelector('button').onclick = () => {
+            modal.remove();
+            resolve();
+        };
+        document.body.appendChild(modal);
+    });
+}
+
 // --- Data Models & State ---
 const state = {
     currentView: 'list',
@@ -15,10 +57,16 @@ const state = {
         sat: 10, sun: 11, holiday: 10
     },
     customDates: {}, // { "YYYY-MM-DD": hours }
-    timePeriods: [] // [ { id, name, start, end, weeklyHours: {...} } ]
+    timePeriods: [], // [ { id, name, start, end, weeklyHours: {...} } ]
+    schoolEvents: [], // SchoolEvents rows imported from the connected spreadsheet
+    schoolVacationDates: [], // Dates set to 0 automatically from category=vacation
+    archiveSettings: {
+        autoArchiveAfterDays: 0,
+        showArchived: false
+    }
 };
 // target structure example:
-// { id, name, startDate, targetDate, color, type: 'study'|'event', tasks: [], createdAt }
+// { id, name, startDate, targetDate, color, type: 'study'|'event', tasks: [], archived, createdAt }
 
 function toLocalDateString(date) {
     const y = date.getFullYear();
@@ -29,8 +77,9 @@ function toLocalDateString(date) {
 
 function normalizeTarget(target) {
     const t = target || {};
+    const normalized = { ...t, archived: t.archived === true, archiveOverride: t.archiveOverride === true };
     const hasStartDate = typeof t.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.startDate);
-    if (hasStartDate) return t;
+    if (hasStartDate) return normalized;
 
     let startDate = toLocalDateString(new Date());
     if (t.createdAt) {
@@ -40,7 +89,7 @@ function normalizeTarget(target) {
         }
     }
 
-    return { ...t, startDate };
+    return { ...normalized, startDate };
 }
 
 function escapeHTML(value) {
@@ -60,7 +109,10 @@ const storage = {
             targets: state.targets,
             weeklyHours: state.weeklyHours,
             customDates: state.customDates,
-            timePeriods: state.timePeriods
+            timePeriods: state.timePeriods,
+            schoolEvents: state.schoolEvents,
+            schoolVacationDates: state.schoolVacationDates,
+            archiveSettings: state.archiveSettings
         }));
     },
     load: () => {
@@ -71,6 +123,13 @@ const storage = {
             state.weeklyHours = parsed.weeklyHours || state.weeklyHours;
             state.customDates = parsed.customDates || {};
             state.timePeriods = parsed.timePeriods || [];
+            state.schoolEvents = Array.isArray(parsed.schoolEvents) ? parsed.schoolEvents : [];
+            state.schoolVacationDates = Array.isArray(parsed.schoolVacationDates) ? parsed.schoolVacationDates : [];
+            state.archiveSettings = {
+                autoArchiveAfterDays: [0, 1, 7, 30].includes(Number(parsed.archiveSettings?.autoArchiveAfterDays))
+                    ? Number(parsed.archiveSettings.autoArchiveAfterDays) : 0,
+                showArchived: parsed.archiveSettings?.showArchived === true
+            };
 
             // Migration: if customDates is empty but exclusionDates exists
             if (Object.keys(state.customDates).length === 0 && parsed.exclusionDates) {
@@ -121,7 +180,10 @@ const backupUtils = {
             targets: state.targets,
             weeklyHours: state.weeklyHours,
             customDates: state.customDates,
-            timePeriods: state.timePeriods
+            timePeriods: state.timePeriods,
+            schoolEvents: state.schoolEvents,
+            schoolVacationDates: state.schoolVacationDates,
+            archiveSettings: state.archiveSettings
         };
 
         return {
@@ -163,6 +225,13 @@ const backupUtils = {
         state.weeklyHours = { ...state.weeklyHours, ...payload.weeklyHours };
         state.customDates = payload.customDates && typeof payload.customDates === 'object' ? payload.customDates : {};
         state.timePeriods = Array.isArray(payload.timePeriods) ? payload.timePeriods : [];
+        state.schoolEvents = Array.isArray(payload.schoolEvents) ? payload.schoolEvents : [];
+        state.schoolVacationDates = Array.isArray(payload.schoolVacationDates) ? payload.schoolVacationDates : [];
+        state.archiveSettings = {
+            autoArchiveAfterDays: [0, 1, 7, 30].includes(Number(payload.archiveSettings?.autoArchiveAfterDays))
+                ? Number(payload.archiveSettings.autoArchiveAfterDays) : 0,
+            showArchived: payload.archiveSettings?.showArchived === true
+        };
         storage.save();
 
         const keysToRemove = [];
@@ -233,9 +302,10 @@ const googleSheetSync = {
     connectExisting: async (value) => {
         const spreadsheetId = googleSheetSync.extractSpreadsheetId(value);
         if (!spreadsheetId) throw new Error('GoogleスプレッドシートのURLまたはIDを入力してください');
-        // Confirm that the signed-in person is allowed to read this sheet before
-        // persisting its ID in the app.
-        await googleNativeSync.loadBackup(spreadsheetId);
+        // A legacy SchoolEvents-only sheet is a valid read-only schedule source.
+        // Reading this optional range verifies access without requiring or
+        // modifying TimeMarkData in the user's existing spreadsheet.
+        await googleNativeSync.loadSchoolEvents(spreadsheetId);
         const identity = googleNativeSync.getSession() || {};
         googleSheetSync.saveConfig({
             spreadsheetId,
@@ -263,6 +333,8 @@ const googleSheetSync = {
     },
 
     loadSchedule: async () => googleNativeSync.loadSchedule(googleSheetSync.requireSheetId()),
+
+    loadSchoolEvents: async () => googleNativeSync.loadSchoolEvents(googleSheetSync.requireSheetId()),
 
     disconnect: () => {
         googleNativeSync.disconnect();
@@ -438,6 +510,75 @@ const views = {
     }
 };
 
+function applySchoolEvents(events) {
+    const normalizedEvents = Array.isArray(events) ? events.filter(event =>
+        event && /^\d{4}-\d{2}-\d{2}$/.test(event.date) && typeof event.title === 'string' && event.title.trim()
+    ) : [];
+    const previousVacationDates = new Set(state.schoolVacationDates || []);
+    const vacationDates = new Set(normalizedEvents
+        .filter(event => String(event.category || '').toLowerCase() === 'vacation')
+        .map(event => event.date));
+
+    // Only remove a prior automatic 0-hour rule. A manually set non-zero
+    // exception always remains the user's decision.
+    previousVacationDates.forEach(date => {
+        if (!vacationDates.has(date) && state.customDates[date] === 0) delete state.customDates[date];
+    });
+    vacationDates.forEach(date => {
+        if (state.customDates[date] === undefined) state.customDates[date] = 0;
+    });
+
+    state.schoolEvents = normalizedEvents.sort((a, b) => a.date.localeCompare(b.date));
+    state.schoolVacationDates = [...vacationDates].sort();
+    storage.save();
+}
+
+function isTargetArchived(target, now = new Date()) {
+    if (target.archived === true) return true;
+    if (target.archiveOverride === true) return false;
+    const delay = Number(state.archiveSettings.autoArchiveAfterDays) || 0;
+    if (!delay || !/^\d{4}-\d{2}-\d{2}$/.test(target.targetDate || '')) return false;
+    const completedOn = new Date(`${target.targetDate}T00:00:00`);
+    completedOn.setDate(completedOn.getDate() + delay);
+    return timeUtils.startOfDay(now) > completedOn;
+}
+
+function archiveActionLabel(target) {
+    return isTargetArchived(target) ? 'アーカイブを解除' : 'アーカイブする';
+}
+
+function getDisplayedTargets() {
+    const activeTargets = state.targets.filter(target => !isTargetArchived(target));
+    if (!state.archiveSettings.showArchived) return activeTargets;
+    const archivedTargets = state.targets.filter(target => isTargetArchived(target));
+    // Even when archives are visible, keep current/future work in the first
+    // block and place completed archives below it.
+    return [...activeTargets, ...archivedTargets];
+}
+
+function reorderDisplayedTargets(reorderedTargets) {
+    const reorderedIds = new Set(reorderedTargets.map(target => target.id));
+    let index = 0;
+    state.targets = state.targets.map(target => reorderedIds.has(target.id) ? reorderedTargets[index++] : target);
+    storage.save();
+}
+
+function renderSchoolEventsTable() {
+    if (state.schoolEvents.length === 0) {
+        return '<p class="empty-state" style="padding: 10px;">まだ学校予定を読み込んでいません</p>';
+    }
+    return `<div class="school-events-table-wrap"><table class="school-events-table">
+        <thead><tr><th>日付</th><th>学年</th><th>分類</th><th>予定</th><th>出典</th></tr></thead>
+        <tbody>${state.schoolEvents.map(event => `<tr>
+            <td>${escapeHTML(event.date)}</td>
+            <td>${escapeHTML(event.grade)}</td>
+            <td><span class="school-event-category">${escapeHTML(event.category)}</span></td>
+            <td>${escapeHTML(event.title)}</td>
+            <td>${escapeHTML(event.source)}</td>
+        </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
 function renderSettings() {
     const container = document.getElementById('settings-view');
     if (!container) return;
@@ -448,9 +589,34 @@ function renderSettings() {
         mon: '月曜日', tue: '火曜日', wed: '水曜日', thu: '木曜日', fri: '金曜日',
         sat: '土曜日', sun: '日曜日', holiday: '祝日'
     };
+    const archiveCount = state.targets.filter(target => isTargetArchived(target)).length;
 
     container.innerHTML = `
-        <h1 class="glow-text">Settings</h1>
+        <h1 class="glow-text">設定</h1>
+
+        <p class="settings-intro">自分の予定と学校予定は、別々に管理・読み込みできます。</p>
+
+        <section class="settings-section">
+            <h2>自分の設定</h2>
+            <div class="task-section-header">
+                <h2>アーカイブ</h2>
+                <span class="sync-status">${archiveCount}件</span>
+            </div>
+            <label class="archive-setting-row">
+                <span>目標日を過ぎたターゲットを非表示にする時期</span>
+                <select id="auto-archive-after-select">
+                    <option value="0" ${state.archiveSettings.autoArchiveAfterDays === 0 ? 'selected' : ''}>自動では非表示にしない</option>
+                    <option value="1" ${state.archiveSettings.autoArchiveAfterDays === 1 ? 'selected' : ''}>完了後1日</option>
+                    <option value="7" ${state.archiveSettings.autoArchiveAfterDays === 7 ? 'selected' : ''}>完了後1週間</option>
+                    <option value="30" ${state.archiveSettings.autoArchiveAfterDays === 30 ? 'selected' : ''}>完了後1か月</option>
+                </select>
+            </label>
+            <label class="archive-setting-row archive-show-toggle">
+                <span>アーカイブ済みをLIST／Time Roadにも表示する</span>
+                <input type="checkbox" id="show-archived-toggle" ${state.archiveSettings.showArchived ? 'checked' : ''}>
+            </label>
+            <p class="sync-help">個別アーカイブは、LISTのターゲットを右クリック（Mac）または長押し（iPhone）して開く「ターゲット編集」から切り替えられます。アーカイブしてもデータは削除されません。</p>
+        </section>
         
         <section class="settings-section">
             <h2>週間稼働時間（デフォルト）</h2>
@@ -479,7 +645,7 @@ function renderSettings() {
 
         <section class="settings-section">
             <div class="task-section-header">
-                <h2>期間指定（長期休暇など）</h2>
+                <h2>自分の予定：期間指定</h2>
                 <button class="btn btn-primary btn-sm" id="add-period-btn">+ 期間を追加</button>
             </div>
             <div class="exception-list" id="period-list-container">
@@ -498,53 +664,30 @@ function renderSettings() {
 
         <section class="settings-section">
             <div class="task-section-header">
-                <h2>Googleスプレッドシート同期</h2>
+                <h2>自分のTimeMarkデータ</h2>
                 <span class="sync-status" id="google-sync-status">${googleSyncConfig.spreadsheetId ? `接続先: ${escapeHTML(googleSyncConfig.accountEmail || 'TimeMarkシート')}` : '未接続'}</span>
             </div>
-            <div class="sync-grid">
-                <label class="sync-field sync-field-wide">
-                    <span>TimeMarkシートURL（このアプリで作成したシート）</span>
-                    <input type="url" id="google-sheet-url-input" value="${escapeHTML(googleSyncConfig.spreadsheetUrl)}" placeholder="新しく作成すると自動で設定されます" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>
-                </label>
+            <div class="sync-actions">
+                <button class="btn btn-primary btn-sm" id="google-save-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>自分のデータを保存</button>
+                <button class="btn btn-ghost btn-sm" id="google-load-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>自分のデータを読み込む</button>
+            </div>
+            <p class="sync-help">ターゲット・自分の設定・例外日などを <code>TimeMarkData</code> に保存／読み込みします。</p>
+        </section>
+
+        <section class="settings-section">
+            <div class="task-section-header">
+                <h2>自分の予定</h2>
+                <span class="sync-status">例外日 ${Object.keys(state.customDates).length}件</span>
             </div>
             <div class="sync-actions">
-                <button class="btn btn-ghost btn-sm" id="google-sign-in-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>Googleに接続</button>
-                <button class="btn btn-primary btn-sm" id="google-create-sheet-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>新しいTimeMarkシートを作成</button>
-                <button class="btn btn-ghost btn-sm" id="google-connect-sheet-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>作成済みシートを接続</button>
-                <button class="btn btn-primary btn-sm" id="google-save-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>シートへ保存</button>
-                <button class="btn btn-ghost btn-sm" id="google-load-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>シートから読み込み</button>
-                <button class="btn btn-ghost btn-sm" id="google-load-schedule-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>予定表を読み込み</button>
-                <button class="btn btn-ghost btn-sm" id="google-disconnect-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>接続を解除</button>
+                <button class="btn btn-ghost btn-sm" id="google-load-schedule-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>予定表を読み込む</button>
+                <button class="btn btn-ghost btn-sm" id="export-csv-btn">📤 CSV</button>
+                <button class="btn btn-ghost btn-sm" id="export-ics-btn">📤 ICS</button>
+                <button class="btn btn-ghost btn-sm" id="import-file-btn">📥 インポート</button>
+                <button class="btn btn-primary btn-sm" id="add-exception-btn">+ 追加</button>
             </div>
-            <p class="sync-help">GASの設定は不要です。Googleログイン後に、利用者ごとのTimeMarkシートを作成して保存できます。ログイン情報は端末に保存せず、アプリを閉じると再接続が必要です。予定表シートの <code>date</code>・<code>hours</code>・<code>note</code> は、例外日の稼働時間として取り込みます。</p>
-            ${nativeGoogleSyncAvailable ? '' : '<p class="sync-help">この画面を利用するには、TimeMarkアプリ版を開いてください。</p>'}
-        </section>
-
-        <section class="settings-section">
-            <div class="task-section-header">
-                <h2>データ移行（端末間）</h2>
-                <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-ghost btn-sm" id="export-backup-btn">📤 エクスポート</button>
-                    <button class="btn btn-primary btn-sm" id="import-backup-btn">📥 インポート</button>
-                </div>
-                <input type="file" id="backup-file-input" style="display: none;" accept=".json,application/json">
-            </div>
-            <p style="margin: 8px 0 0; color: var(--text-sub); font-size: 12px;">
-                すべてのターゲット設定・例外日・期間設定・基準日を JSON で移行できます。
-            </p>
-        </section>
-
-        <section class="settings-section">
-            <div class="task-section-header">
-                <h2>例外日（個別の予定）</h2>
-                <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-ghost btn-sm" id="export-csv-btn">📤 CSV</button>
-                    <button class="btn btn-ghost btn-sm" id="export-ics-btn">📤 ICS</button>
-                    <button class="btn btn-ghost btn-sm" id="import-file-btn">📥 インポート</button>
-                    <button class="btn btn-primary btn-sm" id="add-exception-btn">+ 追加</button>
-                </div>
-                <input type="file" id="settings-file-input" style="display: none;" accept=".ics,.csv">
-            </div>
+            <p class="sync-help"><code>TimeMarkSchedule</code> の <code>date</code>・<code>hours</code>・<code>note</code> を、個別の予定として読み込みます。読み込むと同じ日付の例外日設定は上書きされます。</p>
+            <input type="file" id="settings-file-input" style="display: none;" accept=".ics,.csv">
             <div class="exception-list" id="exception-list-container">
                 ${Object.keys(state.customDates).length === 0 ? '<p class="empty-state" style="padding: 10px;">例外日が設定されていません</p>' : ''}
                 ${Object.keys(state.customDates).sort().map(date => `
@@ -557,6 +700,59 @@ function renderSettings() {
                     </div>
                 `).join('')}
             </div>
+        </section>
+
+        <section class="settings-section">
+            <div class="task-section-header">
+                <h2>学校予定（SchoolEvents）</h2>
+                <span class="sync-status">${state.schoolEvents.length}件</span>
+            </div>
+            <div class="sync-actions">
+                <button class="btn btn-primary btn-sm" id="google-load-school-events-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>学校予定を読み込む</button>
+            </div>
+            <p class="sync-help">学校側の <code>SchoolEvents</code> を読み込むだけで、アプリから学校予定を書き換えることはありません。</p>
+            <details class="settings-details" ${state.schoolEvents.length > 0 ? 'open' : ''}>
+                <summary>学校予定を見る・シートの書き方を見る</summary>
+                ${renderSchoolEventsTable()}
+                <p class="sync-help">入力例は <code>SchoolEventsExample</code> シートにあります。実データは <code>SchoolEvents</code> へ、1行目の見出しを変えずに入力してください。</p>
+            </details>
+        </section>
+
+        <section class="settings-section">
+            <div class="task-section-header">
+                <h2>Googleスプレッドシート接続</h2>
+                <span class="sync-status">${googleSyncConfig.spreadsheetId ? '設定済み' : '未設定'}</span>
+            </div>
+            <p class="sync-help">GASの設定は不要です。初回だけ、ここから自分用のシートを作成するか、既存のシートを接続します。</p>
+            <details class="settings-details" ${googleSyncConfig.spreadsheetId ? '' : 'open'}>
+                <summary>シートを作成・接続・管理</summary>
+                <div class="sync-grid">
+                    <label class="sync-field sync-field-wide">
+                        <span>TimeMark／SchoolEventsシートURL</span>
+                        <input type="url" id="google-sheet-url-input" value="${escapeHTML(googleSyncConfig.spreadsheetUrl)}" placeholder="新しく作成すると自動で設定されます" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>
+                    </label>
+                </div>
+                <div class="sync-actions">
+                    <button class="btn btn-ghost btn-sm" id="google-sign-in-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>Googleに接続</button>
+                    <button class="btn btn-primary btn-sm" id="google-create-sheet-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>新しいTimeMarkシートを作成</button>
+                    <button class="btn btn-ghost btn-sm" id="google-connect-sheet-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>作成済みシートを接続</button>
+                    <button class="btn btn-ghost btn-sm" id="google-open-sheet-btn" ${nativeGoogleSyncAvailable && googleSyncConfig.spreadsheetUrl ? '' : 'disabled'}>シートを開く</button>
+                    <button class="btn btn-ghost btn-sm" id="google-disconnect-btn" ${nativeGoogleSyncAvailable ? '' : 'disabled'}>接続を解除</button>
+                </div>
+            </details>
+            ${nativeGoogleSyncAvailable ? '' : '<p class="sync-help">この画面を利用するには、TimeMarkアプリ版を開いてください。</p>'}
+        </section>
+
+        <section class="settings-section">
+            <details class="settings-details">
+                <summary>端末データを移行する</summary>
+                <div class="sync-actions">
+                    <button class="btn btn-ghost btn-sm" id="export-backup-btn">📤 エクスポート</button>
+                    <button class="btn btn-primary btn-sm" id="import-backup-btn">📥 インポート</button>
+                </div>
+                <input type="file" id="backup-file-input" style="display: none;" accept=".json,application/json">
+                <p class="sync-help">すべてのターゲット設定・例外日・期間設定・基準日を JSON で移行できます。</p>
+            </details>
         </section>
     `;
 
@@ -589,6 +785,18 @@ function renderSettings() {
         storage.save();
     };
 
+    container.querySelector('#auto-archive-after-select').onchange = (event) => {
+        state.archiveSettings.autoArchiveAfterDays = Number(event.target.value);
+        storage.save();
+        renderSettings();
+    };
+
+    container.querySelector('#show-archived-toggle').onchange = (event) => {
+        state.archiveSettings.showArchived = event.target.checked;
+        storage.save();
+        renderSettings();
+    };
+
     const googleSyncStatus = container.querySelector('#google-sync-status');
     const googleSheetUrlInput = container.querySelector('#google-sheet-url-input');
 
@@ -596,10 +804,30 @@ function renderSettings() {
         googleSyncStatus.textContent = message;
     }
 
+    function describeGoogleSyncError(error) {
+        if (typeof error === 'string' && error) return error;
+        if (error && typeof error.message === 'string' && error.message) return error.message;
+        if (error && typeof error.error === 'string' && error.error) return error.error;
+        try {
+            const detail = JSON.stringify(error);
+            if (detail && detail !== '{}') return detail;
+        } catch {
+            // Fall through to the generic message below.
+        }
+        return '詳細を取得できないエラーが発生しました';
+    }
+
     async function connectGoogle() {
         setGoogleSyncStatus('Googleに接続中...');
         const identity = await googleSheetSync.signIn();
         setGoogleSyncStatus(`Googleに接続しました${identity.email ? `: ${identity.email}` : ''}`);
+        return identity;
+    }
+
+    async function ensureGoogleConnection() {
+        const existingSession = googleNativeSync.getSession();
+        if (existingSession) return existingSession;
+        return connectGoogle();
     }
 
     if (nativeGoogleSyncAvailable) {
@@ -607,19 +835,20 @@ function renderSettings() {
             try {
                 await connectGoogle();
             } catch (err) {
-                setGoogleSyncStatus(`接続失敗: ${err.message}`);
+                setGoogleSyncStatus(`接続失敗: ${describeGoogleSyncError(err)}`);
             }
         };
 
         container.querySelector('#google-create-sheet-btn').onclick = async () => {
             try {
-                await connectGoogle();
+                await ensureGoogleConnection();
                 setGoogleSyncStatus('新しいTimeMarkシートを作成・保存中...');
                 const created = await googleSheetSync.createSheet();
                 googleSheetUrlInput.value = created.spreadsheetUrl;
+                container.querySelector('#google-open-sheet-btn').disabled = false;
                 setGoogleSyncStatus('新しいTimeMarkシートを作成して保存しました');
             } catch (err) {
-                setGoogleSyncStatus(`作成失敗: ${err.message}`);
+                setGoogleSyncStatus(`作成失敗: ${describeGoogleSyncError(err)}`);
             }
         };
 
@@ -627,56 +856,84 @@ function renderSettings() {
             try {
                 const sheetUrl = googleSheetUrlInput.value.trim();
                 if (!sheetUrl) throw new Error('TimeMarkシートURLを入力してください');
-                await connectGoogle();
+                await ensureGoogleConnection();
                 setGoogleSyncStatus('接続を確認中...');
                 await googleSheetSync.connectExisting(sheetUrl);
+                container.querySelector('#google-open-sheet-btn').disabled = false;
                 setGoogleSyncStatus('作成済みのTimeMarkシートを接続しました');
             } catch (err) {
-                setGoogleSyncStatus(`接続失敗: ${err.message}`);
+                setGoogleSyncStatus(`接続失敗: ${describeGoogleSyncError(err)}`);
+            }
+        };
+
+        container.querySelector('#google-open-sheet-btn').onclick = async () => {
+            try {
+                const { spreadsheetUrl } = googleSheetSync.getConfig();
+                if (!spreadsheetUrl) throw new Error('先にTimeMarkシートを作成または接続してください');
+                await googleNativeSync.openSheet(spreadsheetUrl);
+                setGoogleSyncStatus('スプレッドシートを外部アプリで起動しています…');
+            } catch (err) {
+                setGoogleSyncStatus(`シートを開けませんでした: ${describeGoogleSyncError(err)}`);
             }
         };
 
         container.querySelector('#google-save-btn').onclick = async () => {
             try {
-                await connectGoogle();
+                await ensureGoogleConnection();
                 setGoogleSyncStatus('シートへ保存中...');
                 await googleSheetSync.save();
                 setGoogleSyncStatus('シートへ保存しました');
             } catch (err) {
-                setGoogleSyncStatus(`保存失敗: ${err.message}`);
+                setGoogleSyncStatus(`保存失敗: ${describeGoogleSyncError(err)}`);
             }
         };
 
         container.querySelector('#google-load-btn').onclick = async () => {
             try {
-                if (!confirm('現在の端末内データを、TimeMarkシート上のバックアップで置き換えますか？')) return;
-                await connectGoogle();
+                if (!await confirmInApp('現在の端末内データを、TimeMarkシート上のバックアップで置き換えますか？')) return;
+                await ensureGoogleConnection();
                 setGoogleSyncStatus('シートから読み込み中...');
                 await googleSheetSync.load();
+                await notifyInApp('シートから読み込みました');
                 switchView('list');
             } catch (err) {
-                setGoogleSyncStatus(`読込失敗: ${err.message}`);
+                setGoogleSyncStatus(`読込失敗: ${describeGoogleSyncError(err)}`);
             }
         };
 
         container.querySelector('#google-load-schedule-btn').onclick = async () => {
             try {
-                if (!confirm('予定表を読み込み、同じ日付の例外日設定を上書きしますか？')) return;
-                await connectGoogle();
+                if (!await confirmInApp('予定表を読み込み、同じ日付の例外日設定を上書きしますか？')) return;
+                await ensureGoogleConnection();
                 setGoogleSyncStatus('予定表を読み込み中...');
                 const entries = await googleSheetSync.loadSchedule();
                 entries.forEach(({ date, hours }) => { state.customDates[date] = hours; });
                 storage.save();
                 setGoogleSyncStatus(`${entries.length}日分の予定表を読み込みました`);
+                await notifyInApp(`${entries.length}日分の予定表を読み込みました`);
             } catch (err) {
-                setGoogleSyncStatus(`予定表の読込失敗: ${err.message}`);
+                setGoogleSyncStatus(`予定表の読込失敗: ${describeGoogleSyncError(err)}`);
             }
         };
 
-        container.querySelector('#google-disconnect-btn').onclick = () => {
-            if (!confirm('この端末とTimeMarkシートの接続設定を解除しますか？ シート上のデータは削除されません。')) return;
+        container.querySelector('#google-load-school-events-btn').onclick = async () => {
+            try {
+                await ensureGoogleConnection();
+                setGoogleSyncStatus('学校予定を読み込み中...');
+                const events = await googleSheetSync.loadSchoolEvents();
+                applySchoolEvents(events);
+                setGoogleSyncStatus(`${events.length}件の学校予定を読み込みました`);
+                renderSettings();
+            } catch (err) {
+                setGoogleSyncStatus(`学校予定の読込失敗: ${describeGoogleSyncError(err)}`);
+            }
+        };
+
+        container.querySelector('#google-disconnect-btn').onclick = async () => {
+            if (!await confirmInApp('この端末とTimeMarkシートの接続設定を解除しますか？ シート上のデータは削除されません。')) return;
             googleSheetSync.disconnect();
             renderSettings();
+            await notifyInApp('この端末の接続設定を解除しました。シート上のデータは残っています。');
         };
     }
 
@@ -1003,6 +1260,7 @@ function renderEventDetail(target, container) {
         </header>
         <div class="card">
             <p>このターゲットは「イベント」として設定されています。日数のカウントダウンのみを行います。</p>
+            <button class="btn btn-ghost" id="archive-target-btn" style="margin-top: 20px;">${archiveActionLabel(target)}</button>
             <button class="btn btn-ghost" id="delete-target-btn" style="color: var(--accent-red); margin-top: 20px;">このターゲットを削除</button>
         </div>
     `;
@@ -1019,6 +1277,7 @@ function renderEventDetail(target, container) {
             switchView('list');
         }
     };
+    bindArchiveTargetButton(container, target);
 }
 
 function renderStudyDetail(target, container) {
@@ -1066,6 +1325,7 @@ function renderStudyDetail(target, container) {
                 <div class="task-item" style="border-style: dashed; display: flex; justify-content: center; cursor: pointer;" id="add-task-item">
                     <span style="color: var(--text-sub)">+ 科目・タスクを追加</span>
                 </div>
+                <button class="btn btn-ghost" id="archive-target-btn" style="margin-top: 20px; width: 100%;">${archiveActionLabel(target)}</button>
             </div>
             <button class="btn btn-ghost" id="delete-target-btn" style="color: var(--accent-red); margin-top: 40px; width: 100%;">このターゲットを削除</button>
         </section>
@@ -1117,16 +1377,34 @@ function renderStudyDetail(target, container) {
             switchView('list');
         }
     };
+    bindArchiveTargetButton(container, target);
+}
+
+function bindArchiveTargetButton(container, target) {
+    const button = container.querySelector('#archive-target-btn');
+    if (!button) return;
+    button.onclick = async () => {
+        const nextArchived = !isTargetArchived(target);
+        const prompt = nextArchived
+            ? 'このターゲットをアーカイブしますか？ データは削除されません。'
+            : 'このターゲットを通常表示へ戻しますか？';
+        if (!await confirmInApp(prompt)) return;
+        target.archived = nextArchived;
+        target.archiveOverride = !nextArchived;
+        storage.save();
+        switchView('list');
+    };
 }
 
 function renderList() {
     const listContainer = document.getElementById('target-list');
     if (!listContainer) return;
+    const displayedTargets = getDisplayedTargets();
 
-    if (state.targets.length === 0) {
+    if (displayedTargets.length === 0) {
         listContainer.innerHTML = `
             <div class="empty-state">
-                <p>ターゲットがありません。<br>右下の「＋」から追加してください。</p>
+                <p>${state.targets.length === 0 ? 'ターゲットがありません。<br>右下の「＋」から追加してください。' : '表示するターゲットはありません。<br>設定からアーカイブ済みを表示できます。'}</p>
             </div>
         `;
         return;
@@ -1134,7 +1412,7 @@ function renderList() {
 
     const today = new Date();
 
-    listContainer.innerHTML = state.targets.map(target => {
+    listContainer.innerHTML = displayedTargets.map((target, index) => {
         const targetDate = new Date(target.targetDate);
         const calDays = timeUtils.calcCalendarDays(today, targetDate);
 
@@ -1161,8 +1439,13 @@ function renderList() {
                             <line x1="4" y1="16" x2="20" y2="16"></line>
                         </svg>
                     </div>
+                    <div class="target-order-controls" aria-label="順序を変更">
+                        <button class="order-step-btn" data-move-target="up" data-target-id="${target.id}" ${index === 0 ? 'disabled' : ''} aria-label="上へ">▲</button>
+                        <button class="order-step-btn" data-move-target="down" data-target-id="${target.id}" ${index === displayedTargets.length - 1 ? 'disabled' : ''} aria-label="下へ">▼</button>
+                    </div>
                     <div class="target-info">
                         <div class="target-type-badge">${target.type.toUpperCase()}</div>
+                        ${isTargetArchived(target) ? '<div class="target-archive-badge">ARCHIVED</div>' : ''}
                         <div class="target-name" style="color: ${target.color}">${target.name}</div>
                         <div class="target-sub">${subDisplay}</div>
                     </div>
@@ -1179,11 +1462,104 @@ function renderList() {
 
     // Setup Drag and Drop
     setupDragging(listContainer);
+    bindOrderStepButtons(listContainer, renderList);
+}
+
+function moveTargetByStep(targetId, direction) {
+    const displayedTargets = getDisplayedTargets();
+    const from = displayedTargets.findIndex(target => target.id === targetId);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= displayedTargets.length) return false;
+    [displayedTargets[from], displayedTargets[to]] = [displayedTargets[to], displayedTargets[from]];
+    reorderDisplayedTargets(displayedTargets);
+    return true;
+}
+
+function bindOrderStepButtons(container, renderCurrentView) {
+    container.querySelectorAll('[data-move-target]').forEach(button => {
+        button.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const direction = button.dataset.moveTarget === 'up' ? -1 : 1;
+            if (moveTargetByStep(button.dataset.targetId, direction)) renderCurrentView();
+        };
+    });
+}
+
+function createDragAutoScroller(onPositionChange) {
+    const scrollContainer = document.getElementById('app-content');
+    const EDGE_ZONE_PX = 92;
+    const MAX_SPEED_PX = 18;
+    let pointerY = null;
+    let frame = null;
+
+    const tick = () => {
+        frame = null;
+        if (pointerY === null || !scrollContainer) return;
+        const bounds = scrollContainer.getBoundingClientRect();
+        let amount = 0;
+        if (pointerY < bounds.top + EDGE_ZONE_PX) {
+            amount = -MAX_SPEED_PX * (1 - Math.max(0, pointerY - bounds.top) / EDGE_ZONE_PX);
+        } else if (pointerY > bounds.bottom - EDGE_ZONE_PX) {
+            amount = MAX_SPEED_PX * (1 - Math.max(0, bounds.bottom - pointerY) / EDGE_ZONE_PX);
+        }
+        if (amount === 0) return;
+        const before = scrollContainer.scrollTop;
+        scrollContainer.scrollTop += amount;
+        if (scrollContainer.scrollTop !== before) {
+            onPositionChange(pointerY);
+            frame = requestAnimationFrame(tick);
+        }
+    };
+
+    return {
+        update: (clientY) => {
+            pointerY = clientY;
+            if (!frame) frame = requestAnimationFrame(tick);
+        },
+        stop: () => {
+            pointerY = null;
+            if (frame) cancelAnimationFrame(frame);
+            frame = null;
+        }
+    };
+}
+
+function bindMouseHandleDrag(handle, item, moveItem, finishDrag, autoScroller) {
+    // WKWebView on macOS reliably supplies the classic mouse events here;
+    // use them instead of HTML5 drag or PointerEvent capture.
+    handle.addEventListener('mousedown', (event) => {
+        if (event.button !== 0) return;
+        item.classList.add('dragging');
+        event.preventDefault();
+        event.stopPropagation();
+
+        const moveMouseDrag = (moveEvent) => {
+            moveEvent.preventDefault();
+            moveItem(moveEvent.clientY);
+            autoScroller.update(moveEvent.clientY);
+        };
+        const finishMouseDrag = (upEvent) => {
+            document.removeEventListener('mousemove', moveMouseDrag);
+            document.removeEventListener('mouseup', finishMouseDrag);
+            finishDrag();
+            upEvent.preventDefault();
+        };
+        document.addEventListener('mousemove', moveMouseDrag);
+        document.addEventListener('mouseup', finishMouseDrag);
+    });
 }
 
 function setupDragging(container) {
     let draggingItem = null;
-    const LONG_PRESS_MS = 550;
+    const LONG_PRESS_MS = 850;
+    const moveItem = (clientY) => {
+        if (!draggingItem) return;
+        const afterElement = getDragAfterElement(container, clientY);
+        if (afterElement) container.insertBefore(draggingItem, afterElement);
+        else container.appendChild(draggingItem);
+    };
+    const autoScroller = createDragAutoScroller(moveItem);
 
     container.querySelectorAll('.target-item').forEach(item => {
         let longPressTimer = null;
@@ -1208,18 +1584,14 @@ function setupDragging(container) {
         item.addEventListener('dragend', () => {
             item.classList.remove('dragging');
             draggingItem = null;
+            autoScroller.stop();
 
             saveTargetOrder(container, '.target-item');
         });
 
         item.addEventListener('dragover', (e) => {
             e.preventDefault();
-            const afterElement = getDragAfterElement(container, e.clientY);
-            if (afterElement == null) {
-                container.appendChild(draggingItem);
-            } else {
-                container.insertBefore(draggingItem, afterElement);
-            }
+            moveItem(e.clientY);
         });
 
         item.addEventListener('contextmenu', (e) => {
@@ -1252,6 +1624,50 @@ function setupDragging(container) {
 
         item.addEventListener('touchend', clearLongPressTimer, { passive: true });
         item.addEventListener('touchcancel', clearLongPressTimer, { passive: true });
+
+        // iOS does not support HTML5 drag and drop for ordinary page elements.
+        // Reorder from the existing handle so a long press on the rest of the
+        // card can remain the edit gesture.
+        const dragHandle = item.querySelector('.drag-handle');
+        if (dragHandle) {
+            let handleDragging = false;
+            const finishHandleDrag = () => {
+                item.classList.remove('dragging');
+                draggingItem = null;
+                handleDragging = false;
+                autoScroller.stop();
+                saveTargetOrder(container, '.target-item');
+            };
+            dragHandle.addEventListener('touchstart', (event) => {
+                if (event.touches.length !== 1) return;
+                clearLongPressTimer();
+                handleDragging = true;
+                draggingItem = item;
+                item.classList.add('dragging');
+                event.preventDefault();
+                event.stopPropagation();
+            }, { passive: false });
+            dragHandle.addEventListener('touchmove', (event) => {
+                if (!handleDragging || event.touches.length !== 1) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const clientY = event.touches[0].clientY;
+                moveItem(clientY);
+                autoScroller.update(clientY);
+            }, { passive: false });
+            const finishTouchHandleDrag = (event) => {
+                if (!handleDragging) return;
+                event.preventDefault();
+                event.stopPropagation();
+                finishHandleDrag();
+            };
+            dragHandle.addEventListener('touchend', finishTouchHandleDrag, { passive: false });
+            dragHandle.addEventListener('touchcancel', finishTouchHandleDrag, { passive: false });
+            bindMouseHandleDrag(dragHandle, item, (clientY) => {
+                draggingItem = item;
+                moveItem(clientY);
+            }, finishHandleDrag, autoScroller);
+        }
 
         // Handle item click (only if not dragging)
         item.addEventListener('click', (e) => {
@@ -1314,9 +1730,18 @@ function showEditTargetModal(targetId) {
                     <option value="#2196f3">ブルー</option>
                     <option value="#ff4b4b">レッド</option>
                     <option value="#9c27b0">パープル</option>
+                    <option value="#fdd835">イエロー</option>
+                    <option value="#8bc34a">ライム</option>
+                    <option value="#00bfa5">ティール</option>
+                    <option value="#00bcd4">シアン</option>
+                    <option value="#3f51b5">インディゴ</option>
+                    <option value="#ec407a">ピンク</option>
+                    <option value="#795548">ブラウン</option>
+                    <option value="#90a4ae">グレー</option>
                 </select>
             </div>
             <div class="modal-actions">
+                <button class="btn btn-ghost" id="edit-archive-target-btn">${archiveActionLabel(target)}</button>
                 <button class="btn btn-ghost" id="edit-modal-cancel">キャンセル</button>
                 <button class="btn btn-primary" id="edit-modal-save">更新</button>
             </div>
@@ -1331,6 +1756,18 @@ function showEditTargetModal(targetId) {
     modal.querySelector('#edit-target-color').value = target.color || '#ff8c00';
 
     modal.querySelector('#edit-modal-cancel').onclick = () => modal.remove();
+    modal.querySelector('#edit-archive-target-btn').onclick = async () => {
+        const nextArchived = !isTargetArchived(target);
+        const prompt = nextArchived
+            ? 'このターゲットをアーカイブしますか？ データは削除されません。'
+            : 'このターゲットを通常表示へ戻しますか？';
+        if (!await confirmInApp(prompt)) return;
+        target.archived = nextArchived;
+        target.archiveOverride = !nextArchived;
+        storage.save();
+        modal.remove();
+        switchView('list');
+    };
     modal.querySelector('#edit-modal-save').onclick = () => {
         const nextType = modal.querySelector('input[name="edit-target-type"]:checked').value;
         const name = modal.querySelector('#edit-target-name').value.trim();
@@ -1382,9 +1819,8 @@ function saveTargetOrder(container, itemSelector) {
     const orderedIds = Array.from(container.querySelectorAll(itemSelector)).map(item => item.dataset.id);
     const reordered = orderedIds.map(id => targetsById.get(id)).filter(Boolean);
 
-    if (reordered.length !== state.targets.length) return;
-    state.targets = reordered;
-    storage.save();
+    if (reordered.length !== getDisplayedTargets().length) return;
+    reorderDisplayedTargets(reordered);
 }
 
 function getRoadDragAfterElement(container, y) {
@@ -1404,13 +1840,9 @@ function setupRoadDragging(container) {
         if (afterElement) container.insertBefore(draggingItem, afterElement);
         else container.appendChild(draggingItem);
     };
+    const autoScroller = createDragAutoScroller(moveItem);
 
     container.querySelectorAll('.road-item-container').forEach(item => {
-        let touchTimer = null;
-        let touchDragging = false;
-        let startX = 0;
-        let startY = 0;
-
         item.addEventListener('dragstart', (event) => {
             draggingItem = item;
             item.classList.add('dragging');
@@ -1419,6 +1851,7 @@ function setupRoadDragging(container) {
         item.addEventListener('dragend', () => {
             item.classList.remove('dragging');
             draggingItem = null;
+            autoScroller.stop();
             saveTargetOrder(container, '.road-item-container');
         });
         item.addEventListener('dragover', (event) => {
@@ -1426,55 +1859,70 @@ function setupRoadDragging(container) {
             moveItem(event.clientY);
         });
 
-        item.addEventListener('touchstart', (event) => {
-            if (event.touches.length !== 1) return;
-            startX = event.touches[0].clientX;
-            startY = event.touches[0].clientY;
-            touchTimer = setTimeout(() => {
-                touchDragging = true;
-                draggingItem = item;
-                item.classList.add('dragging');
-            }, 400);
-        }, { passive: true });
-        item.addEventListener('touchmove', (event) => {
-            if (event.touches.length !== 1) return;
-            const touch = event.touches[0];
-            if (!touchDragging) {
-                if (Math.abs(touch.clientX - startX) > 10 || Math.abs(touch.clientY - startY) > 10) {
-                    clearTimeout(touchTimer);
-                    touchTimer = null;
+        // On touch devices only this visible grip moves a Road card. This avoids
+        // competing with ordinary scrolls and the List screen's long-press edit.
+        const roadDragHandle = item.querySelector('[data-road-drag-handle]');
+        if (roadDragHandle) {
+            let handleDragging = false;
+            let startX = 0;
+            let startY = 0;
+            roadDragHandle.addEventListener('touchstart', (event) => {
+                if (event.touches.length !== 1) return;
+                startX = event.touches[0].clientX;
+                startY = event.touches[0].clientY;
+                event.stopPropagation();
+            }, { passive: true });
+            roadDragHandle.addEventListener('touchmove', (event) => {
+                if (event.touches.length !== 1) return;
+                const touch = event.touches[0];
+                if (!handleDragging) {
+                    if (Math.abs(touch.clientX - startX) < 6 && Math.abs(touch.clientY - startY) < 6) return;
+                    handleDragging = true;
+                    draggingItem = item;
+                    item.classList.add('dragging');
                 }
-                return;
-            }
-            event.preventDefault();
-            moveItem(touch.clientY);
-        }, { passive: false });
-        const finishTouchDrag = () => {
-            clearTimeout(touchTimer);
-            if (!touchDragging) return;
-            item.classList.remove('dragging');
-            touchDragging = false;
-            draggingItem = null;
-            saveTargetOrder(container, '.road-item-container');
-        };
-        item.addEventListener('touchend', finishTouchDrag, { passive: true });
-        item.addEventListener('touchcancel', finishTouchDrag, { passive: true });
+                event.preventDefault();
+                event.stopPropagation();
+                moveItem(touch.clientY);
+                autoScroller.update(touch.clientY);
+            }, { passive: false });
+            const finishRoadHandleDrag = () => {
+                item.classList.remove('dragging');
+                draggingItem = null;
+                handleDragging = false;
+                autoScroller.stop();
+                saveTargetOrder(container, '.road-item-container');
+            };
+            const finishTouchRoadHandleDrag = (event) => {
+                if (!handleDragging) return;
+                event.preventDefault();
+                event.stopPropagation();
+                finishRoadHandleDrag();
+            };
+            roadDragHandle.addEventListener('touchend', finishTouchRoadHandleDrag, { passive: false });
+            roadDragHandle.addEventListener('touchcancel', finishTouchRoadHandleDrag, { passive: false });
+            bindMouseHandleDrag(roadDragHandle, item, (clientY) => {
+                draggingItem = item;
+                moveItem(clientY);
+            }, finishRoadHandleDrag, autoScroller);
+        }
     });
 }
 
 function renderRoad() {
     const roadContainer = document.getElementById('road-view');
     if (!roadContainer) return;
+    const displayedTargets = getDisplayedTargets();
 
-    if (state.targets.length === 0) {
-        roadContainer.innerHTML = '<h1 class="glow-text">Time Road</h1><div class="empty-state">ターゲットがありません。</div>';
+    if (displayedTargets.length === 0) {
+        roadContainer.innerHTML = `<h1 class="glow-text">Time Road</h1><div class="empty-state">${state.targets.length === 0 ? 'ターゲットがありません。' : '表示するターゲットはありません。設定からアーカイブ済みを表示できます。'}</div>`;
         return;
     }
 
     const today = timeUtils.startOfDay(new Date());
     let roadHtml = '<h1 class="glow-text">Time Road</h1>';
 
-    state.targets.forEach(target => {
+    displayedTargets.forEach((target, index) => {
         const start = timeUtils.startOfDay(new Date(target.startDate || target.createdAt || Date.now()));
         const end = timeUtils.startOfDay(new Date(target.targetDate));
 
@@ -1526,12 +1974,21 @@ function renderRoad() {
 
         roadHtml += `
             <div class="road-item-container" data-id="${target.id}" draggable="true">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                    <div class="road-target-name" style="color: ${target.color}">${target.name}</div>
-                    <div class="road-countdown-badge">
-                        <span>あと</span>
-                        <span style="color: ${target.color}; font-size: 1.1rem; margin: 0 4px;">${remaining}</span>
-                        <span>日</span>
+                <div data-road-drag-handle style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; min-width: 0;">
+                        <span class="road-drag-grip" aria-label="並び替え">☰</span>
+                        <div class="road-target-name" style="color: ${target.color}">${target.name}</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div class="road-countdown-badge">
+                            <span>あと</span>
+                            <span style="color: ${target.color}; font-size: 1.1rem; margin: 0 4px;">${remaining}</span>
+                            <span>日</span>
+                        </div>
+                        <div class="target-order-controls road-order-controls" aria-label="順序を変更">
+                            <button class="order-step-btn" data-move-target="up" data-target-id="${target.id}" ${index === 0 ? 'disabled' : ''} aria-label="上へ">▲</button>
+                        <button class="order-step-btn" data-move-target="down" data-target-id="${target.id}" ${index === displayedTargets.length - 1 ? 'disabled' : ''} aria-label="下へ">▼</button>
+                        </div>
                     </div>
                 </div>
                 
@@ -1573,6 +2030,7 @@ function renderRoad() {
 
     roadContainer.innerHTML = roadHtml;
     setupRoadDragging(roadContainer);
+    bindOrderStepButtons(roadContainer, renderRoad);
 }
 
 
@@ -1615,6 +2073,14 @@ function showAddTargetModal() {
                     <option value="#2196f3">ブルー</option>
                     <option value="#ff4b4b">レッド</option>
                     <option value="#9c27b0">パープル</option>
+                    <option value="#fdd835">イエロー</option>
+                    <option value="#8bc34a">ライム</option>
+                    <option value="#00bfa5">ティール</option>
+                    <option value="#00bcd4">シアン</option>
+                    <option value="#3f51b5">インディゴ</option>
+                    <option value="#ec407a">ピンク</option>
+                    <option value="#795548">ブラウン</option>
+                    <option value="#90a4ae">グレー</option>
                 </select>
             </div>
             <div class="modal-actions">
@@ -1642,12 +2108,18 @@ function showAddTargetModal() {
                 targetDate: date,
                 color: color,
                 tasks: [],
+                archived: false,
+                archiveOverride: false,
                 createdAt: Date.now()
             };
             if (type === 'study') {
                 newTarget.tasks.push({ id: crypto.randomUUID(), title: '基本学習', weight: 1 });
             }
-            state.targets.push(newTarget);
+            // Keep every existing target in its current relative order. Only
+            // the new target is inserted before the first later deadline.
+            const insertAt = state.targets.findIndex(target => target.targetDate > newTarget.targetDate);
+            if (insertAt === -1) state.targets.push(newTarget);
+            else state.targets.splice(insertAt, 0, newTarget);
             storage.save();
             modal.remove();
             renderList();
