@@ -34,3 +34,4 @@
 - Xcodeを単独起動した際の開発連携エラーを避けるため、Tauri経由でiOS開発を開始する `tauri:ios:dev` コマンドを追加した。
 - TestFlight準備でXcodeのArchiveを使う場合に、Tauri連携を保ったまま開く `tauri:ios:xcode` コマンドを追加した。
 - iOS／macOSのGoogle同期通信をRustls同梱からOS標準TLSへ切り替え、iPhone／iPad版の輸出コンプライアンス設定を `ITSAppUsesNonExemptEncryption=false` とした。iOS版を0.1.1へ更新し、Apple Distribution署名でTestFlightへ送信した。
+- App Store／TestFlight用の掲載文、テスト観点、プライバシー説明草案を `store-listing.md` に整理した。
