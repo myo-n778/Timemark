@@ -7,6 +7,7 @@
 - PWAファイルはブラウザ用フォールバックとして残すが、パッケージアプリではService Workerを登録しない。
 - Androidネイティブプロジェクトは `src-tauri/gen/android` を正本として含める。再生成は `npm run tauri:android:init`、配布用ビルドはJava 21とAndroid SDKを設定した環境で `npm run tauri:android:build` を使う。
 - WindowsのMSI／EXEはWindows GitHub Actionsで自動生成し、公開Webサイトではなくビルド成果物として30日間保持する。コード署名は未設定のため、配布前には署名設定を別途行う。
+- iPhone／iPadのアプリアイコンは `src-tauri/icons/ios` を正本とし、iOSアプリプロジェクトの `AppIcon.appiconset` へパッケージ準備時に自動同期する。
 
 ## データ
 
