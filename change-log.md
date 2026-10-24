@@ -35,3 +35,7 @@
 - TestFlight準備でXcodeのArchiveを使う場合に、Tauri連携を保ったまま開く `tauri:ios:xcode` コマンドを追加した。
 - iOS／macOSのGoogle同期通信をRustls同梱からOS標準TLSへ切り替え、iPhone／iPad版の輸出コンプライアンス設定を `ITSAppUsesNonExemptEncryption=false` とした。iOS版を0.1.1へ更新し、Apple Distribution署名でTestFlightへ送信した。
 - App Store／TestFlight用の掲載文、テスト観点、プライバシー説明草案を `store-listing.md` に整理した。
+
+## 2026-10-24 依存更新（draft・本番未反映）
+
+ネイティブ版のRust tauriを2.11.5から2.11.6へ更新し、Cargo.tomlに修正下限を指定しました。Node22.23.4とNode24対応Actionsへ変更し、WindowsのPRビルドを追加しました。 詳細な検証範囲と残件は [依存更新の記録](DEPENDENCY-UPDATE-2026-10-24.md) を参照。
