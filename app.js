@@ -697,7 +697,7 @@ function renderSettings() {
     container.innerHTML = `
         <h1 class="glow-text">設定</h1>
 
-        <p class="settings-intro">自分の予定と学校予定は、別々に管理・読み込みできます。</p>
+
 
         <section class="settings-section">
             <h2>自分の設定</h2>
