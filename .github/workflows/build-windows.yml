@@ -1,6 +1,14 @@
 name: Build Windows installer
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/build-windows.yml"
+      - "package-lock.json"
+      - "package.json"
+      - "scripts/**"
+      - "src-tauri/**"
   workflow_dispatch:
   push:
     branches: [main]
@@ -19,15 +27,15 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: '22.23.4'
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
       - run: npm run tauri:build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: TimeMark-Windows
           path: |
